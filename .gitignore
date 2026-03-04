@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Dependencies
 node_modules
 
@@ -30,3 +31,12 @@ lerna-debug.log*
 *.njsproj
 *.sln
 *.sw?
+=======
+node_modules/
+.expo/
+dist/
+web-build/
+*.log
+.env
+.DS_Store
+>>>>>>> 906dd08117aa16fb4aa060e3987c82834f844a1d
