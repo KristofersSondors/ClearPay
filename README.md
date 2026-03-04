@@ -7,6 +7,7 @@
 ## Project Overview
 
 ClearPay helps users:
+
 - Track subscriptions (Netflix, Spotify, gym, etc.)
 - View monthly spend and yearly projections
 - See upcoming payments
@@ -14,6 +15,7 @@ ClearPay helps users:
 - Link bank accounts (planned)
 
 **Current state:** Prototype with mock data. No backend. Two frontends exist:
+
 1. **Web app** — React + Vite + Tailwind (mobile-responsive PWA)
 2. **Mobile app** — React Native + Expo (native iOS/Android via Expo Go)
 
@@ -57,6 +59,7 @@ ClearPay/
 ## Web App (React + Vite)
 
 ### Tech Stack
+
 - **React 19** + **TypeScript**
 - **Vite 7** — build tool
 - **Tailwind CSS v4** — styling
@@ -65,28 +68,31 @@ ClearPay/
 - **Vite PWA** — installable, offline-capable
 
 ### Route Structure
-| Path | Page | Layout |
-|------|------|--------|
-| `/` | Welcome | — |
-| `/login` | Login | — |
-| `/signup` | Signup | — |
-| `/onboarding/banks` | LinkBanks | — |
-| `/onboarding/banks/complete` | LinkBanksComplete | — |
-| `/dashboard` | Dashboard | AppLayout |
-| `/subscriptions` | SubscriptionsList | AppLayout |
-| `/subscriptions/add` | AddSubscription | AppLayout |
-| `/subscriptions/:id` | SubscriptionDetails | AppLayout |
-| `/analytics` | Analytics | AppLayout |
-| `/settings` | Settings | AppLayout |
-| `/settings/edit-profile` | EditProfile | AppLayout |
+
+| Path                         | Page                | Layout    |
+| ---------------------------- | ------------------- | --------- |
+| `/`                          | Welcome             | —         |
+| `/login`                     | Login               | —         |
+| `/signup`                    | Signup              | —         |
+| `/onboarding/banks`          | LinkBanks           | —         |
+| `/onboarding/banks/complete` | LinkBanksComplete   | —         |
+| `/dashboard`                 | Dashboard           | AppLayout |
+| `/subscriptions`             | SubscriptionsList   | AppLayout |
+| `/subscriptions/add`         | AddSubscription     | AppLayout |
+| `/subscriptions/:id`         | SubscriptionDetails | AppLayout |
+| `/analytics`                 | Analytics           | AppLayout |
+| `/settings`                  | Settings            | AppLayout |
+| `/settings/edit-profile`     | EditProfile         | AppLayout |
 
 ### Key Patterns
+
 - **Layout:** `AppLayout` wraps authenticated screens with `Header` + `BottomNav`
 - **Mobile viewport:** `MobileViewport` constrains width (~430px) for mobile-first design
 - **Data:** All data from `src/data/mockData.ts` — replace with API calls later
 - **Styling:** Tailwind utility classes. Accent: `#6B5B95` (purple)
 
 ### Run Web App
+
 ```bash
 npm run dev      # Dev server (http://localhost:5173)
 npm run build    # Production build → dist/
@@ -98,6 +104,7 @@ npm run preview  # Preview production build
 ## Mobile App (React Native + Expo)
 
 ### Tech Stack
+
 - **Expo SDK 54** — managed workflow
 - **React Native 0.81**
 - **React Navigation** — Stack + Bottom Tabs
@@ -105,6 +112,7 @@ npm run preview  # Preview production build
 - **react-native-svg** — SVG for donut chart
 
 ### Navigation Structure
+
 ```
 Stack
 ├── Welcome
@@ -123,16 +131,19 @@ Stack
 ```
 
 ### Key Files
+
 - `App.js` — `NavigationContainer` + Stack, defines all screens
 - `screens/*.js` — One screen per file, functional components
 - Inline: `AppHeader`, `MainTabs`, `StatCard`, `DonutChart` (in App.js / screens)
 
 ### Run Mobile App
+
 ```bash
 npm start        # Expo dev server
 npm run android  # Android emulator
 npm run ios      # iOS simulator (Mac)
 ```
+
 Scan QR with Expo Go. Ensure phone and PC on same Wi‑Fi.
 
 ---
@@ -140,6 +151,7 @@ Scan QR with Expo Go. Ensure phone and PC on same Wi‑Fi.
 ## Data Layer
 
 **Web:** `src/data/mockData.ts`
+
 - `mockSubscriptions` — subscription list
 - `mockDashboardStats` — monthly spend, yearly projection, upcoming
 - `mockUpcomingPayments` — next 30 days
@@ -163,23 +175,27 @@ Scan QR with Expo Go. Ensure phone and PC on same Wi‑Fi.
 ## Conventions for Contributors
 
 ### Naming
+
 - **Screens/Pages:** `PascalCase` + `Screen` or descriptive name (e.g. `DashboardScreen`, `Welcome`)
 - **Components:** `PascalCase` (e.g. `SubscriptionCard`, `AppLayout`)
 - **Hooks:** `use` prefix (e.g. `useSubscriptions`)
 - **Utils:** `camelCase` (e.g. `formatCurrency`)
 
 ### File Organization
+
 - One component per file
 - Co-locate related types/interfaces
 - Keep screens thin — logic in hooks/services
 
 ### Adding a New Screen (Web)
+
 1. Create `src/pages/<area>/<Name>.tsx`
 2. Add route in `src/App.tsx`
 3. Use `AppLayout` if authenticated screen
 4. Import data from `mockData.ts` or future service
 
 ### Adding a New Screen (Mobile)
+
 1. Create `screens/<Name>Screen.js`
 2. Add to Stack in `App.js`
 3. Use `navigation.navigate('ScreenName')` for links
@@ -189,16 +205,20 @@ Scan QR with Expo Go. Ensure phone and PC on same Wi‑Fi.
 ## Environment & Setup
 
 ### Prerequisites
+
 - Node.js 20+
 - For mobile: Expo Go app (SDK 54) on device
 
 ### Install
+
 ```bash
 npm install
 ```
 
 ### Resolve Merge Conflicts
+
 `package.json` may have merge markers. Ensure scripts include:
+
 - Web: `dev`, `build`, `preview`
 - Mobile: `start`, `android`, `ios`
 
@@ -207,9 +227,14 @@ npm install
 ## For AI Assistants (Cursor, etc.)
 
 When editing this codebase:
+
 - **Web app** lives in `src/` — use React, Tailwind, React Router patterns
 - **Mobile app** lives in `screens/` + `App.js` — use React Native primitives
 - **Shared domain:** Subscriptions, dashboard stats, analytics — same concepts, different UI
 - **Data:** Web uses `src/data/mockData.ts`; mobile has inline mocks
 - **No path aliases** in web app — use relative imports from `src/`
 - **Theme:** Purple `#6B5B95`, gray backgrounds, white cards
+
+SUPABASE_URL = https://ohybphdqymeepbtktheb.supabase.co
+SUPABASE_SERVICE_ROLE_KEY = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oeWJwaGRxeW1lZXBidGt0aGViIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MjAyNjk0NSwiZXhwIjoyMDg3NjAyOTQ1fQ.lXMpU9tUqgoj4v1M-PHeAP-j9NzrVN8u6vMWTZttzz8
+SUPABASE_KEY = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oeWJwaGRxeW1lZXBidGt0aGViIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIwMjY5NDUsImV4cCI6MjA4NzYwMjk0NX0.nh48RiXt43wHNNqNaoHkDLq6Nugu_ndm3doDnkDoYxk
