@@ -215,6 +215,24 @@ Scan QR with Expo Go. Ensure phone and PC on same Wi‑Fi.
 npm install
 ```
 
+### Supabase Auth Setup
+
+Create `.env` in the project root:
+
+```bash
+EXPO_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_ID.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+```
+
+For the Vite web app, you can also define:
+
+```bash
+VITE_SUPABASE_URL=https://YOUR_PROJECT_ID.supabase.co
+VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+```
+
+After updating env vars, restart Expo/Vite so the new values are loaded.
+
 ### Resolve Merge Conflicts
 
 `package.json` may have merge markers. Ensure scripts include:
@@ -234,7 +252,3 @@ When editing this codebase:
 - **Data:** Web uses `src/data/mockData.ts`; mobile has inline mocks
 - **No path aliases** in web app — use relative imports from `src/`
 - **Theme:** Purple `#6B5B95`, gray backgrounds, white cards
-
-SUPABASE_URL = https://ohybphdqymeepbtktheb.supabase.co
-SUPABASE_SERVICE_ROLE_KEY = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oeWJwaGRxeW1lZXBidGt0aGViIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MjAyNjk0NSwiZXhwIjoyMDg3NjAyOTQ1fQ.lXMpU9tUqgoj4v1M-PHeAP-j9NzrVN8u6vMWTZttzz8
-SUPABASE_KEY = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oeWJwaGRxeW1lZXBidGt0aGViIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIwMjY5NDUsImV4cCI6MjA4NzYwMjk0NX0.nh48RiXt43wHNNqNaoHkDLq6Nugu_ndm3doDnkDoYxk
