@@ -1,23 +1,205 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from "react";
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  SafeAreaView, ScrollView, KeyboardAvoidingView, Platform,
-} from 'react-native';
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+} from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as WebBrowser from "expo-web-browser";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { getSupabaseClient, hasSupabaseConfig } from "../src/lib/supabase";
+import {
+  sanitizeEmail,
+  sanitizePassword,
+  validateLoginInput,
+} from "../src/utils/authSanitization";
 
 export default function LoginScreen({ navigation }) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const REMEMBER_EMAIL_KEY = "clearpay_remembered_email";
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const googleAuthInProgressRef = useRef(false);
+
+  const redirectTo = "clearpay://auth/callback";
+
+  useEffect(() => {
+    const loadRememberedEmail = async () => {
+      try {
+        const savedEmail = await AsyncStorage.getItem(REMEMBER_EMAIL_KEY);
+        if (savedEmail) {
+          setEmail(savedEmail);
+          setRemember(true);
+        }
+      } catch {
+        // Ignore storage errors to avoid blocking login UI.
+      }
+    };
+
+    loadRememberedEmail();
+  }, []);
+
+  const handleBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+
+    navigation.navigate("Welcome");
+  };
+
+  const persistRememberedEmail = async (shouldRemember, cleanEmail) => {
+    try {
+      if (shouldRemember) {
+        await AsyncStorage.setItem(REMEMBER_EMAIL_KEY, cleanEmail);
+      } else {
+        await AsyncStorage.removeItem(REMEMBER_EMAIL_KEY);
+      }
+    } catch {
+      // Ignore storage errors so authentication flow still succeeds.
+    }
+  };
+
+  const handleLogin = async () => {
+    const cleanEmail = sanitizeEmail(email);
+    const cleanPassword = sanitizePassword(password);
+
+    setEmail(cleanEmail);
+
+    const validationError = validateLoginInput(cleanEmail, cleanPassword);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    if (!hasSupabaseConfig) {
+      setError(
+        "Supabase is not configured. Add EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY.",
+      );
+      return;
+    }
+
+    try {
+      setError("");
+      setLoading(true);
+
+      const supabase = getSupabaseClient();
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password: cleanPassword,
+      });
+
+      if (signInError) {
+        setError(signInError.message || "Unable to sign in. Please try again.");
+        return;
+      }
+
+      await persistRememberedEmail(remember, cleanEmail);
+
+      navigation.navigate("Main");
+    } catch {
+      setError("Something went wrong while signing in. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    if (googleAuthInProgressRef.current) {
+      return;
+    }
+
+    if (!hasSupabaseConfig) {
+      setError(
+        "Supabase is not configured. Add EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY.",
+      );
+      return;
+    }
+
+    try {
+      googleAuthInProgressRef.current = true;
+      setError("");
+      setLoading(true);
+
+      const supabase = getSupabaseClient();
+      const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo,
+          skipBrowserRedirect: true,
+          queryParams: {
+            prompt: "select_account",
+          },
+        },
+      });
+
+      if (oauthError || !data?.url) {
+        setError(oauthError?.message || "Unable to start Google sign-in.");
+        return;
+      }
+
+      const authResult = await WebBrowser.openAuthSessionAsync(
+        data.url,
+        redirectTo,
+      );
+
+      if (authResult.type !== "success" || !authResult.url) {
+        if (authResult.type !== "cancel" && authResult.type !== "dismiss") {
+          setError("Google sign-in was not completed.");
+        }
+        return;
+      }
+
+      const authCode = new URL(authResult.url).searchParams.get("code");
+
+      if (!authCode || typeof authCode !== "string") {
+        setError("Google sign-in failed to return an authorization code.");
+        return;
+      }
+
+      const { error: exchangeError } =
+        await supabase.auth.exchangeCodeForSession(authCode);
+
+      if (exchangeError) {
+        setError(exchangeError.message || "Unable to finish Google sign-in.");
+        return;
+      }
+
+      setTimeout(() => {
+        navigation.replace("Main");
+      }, 150);
+    } catch {
+      setError("Something went wrong during Google sign-in. Please try again.");
+    } finally {
+      googleAuthInProgressRef.current = false;
+      setLoading(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={{ flex: 1 }}
+      >
         <ScrollView contentContainerStyle={styles.container}>
+          <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+            <Text style={styles.backButtonText}>{"< Back"}</Text>
+          </TouchableOpacity>
           <View style={styles.logoBox}>
             <Text style={styles.logoText}>C</Text>
           </View>
           <Text style={styles.title}>Sign in to ClearPay</Text>
-          <Text style={styles.subtitle}>Manage your subscriptions with confidence</Text>
+          <Text style={styles.subtitle}>
+            Manage your subscriptions with confidence
+          </Text>
 
           <View style={styles.card}>
             <Text style={styles.label}>Email address</Text>
@@ -26,7 +208,12 @@ export default function LoginScreen({ navigation }) {
               placeholder="toms@irge.com"
               placeholderTextColor="#aaa"
               value={email}
-              onChangeText={setEmail}
+              onChangeText={(value) => {
+                setEmail(value);
+                if (error) {
+                  setError("");
+                }
+              }}
               keyboardType="email-address"
               autoCapitalize="none"
             />
@@ -36,27 +223,48 @@ export default function LoginScreen({ navigation }) {
               placeholder="••••••••"
               placeholderTextColor="#aaa"
               value={password}
-              onChangeText={setPassword}
+              onChangeText={(value) => {
+                setPassword(value);
+                if (error) {
+                  setError("");
+                }
+              }}
               secureTextEntry
             />
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
             <View style={styles.row}>
-              <TouchableOpacity style={styles.checkRow} onPress={() => setRemember(!remember)}>
-                <View style={[styles.checkbox, remember && styles.checkboxChecked]} />
+              <TouchableOpacity
+                style={styles.checkRow}
+                onPress={() => setRemember(!remember)}
+              >
+                <View
+                  style={[styles.checkbox, remember && styles.checkboxChecked]}
+                />
                 <Text style={styles.rememberText}>Remember me</Text>
               </TouchableOpacity>
               <TouchableOpacity>
                 <Text style={styles.forgotText}>Forgot password?</Text>
               </TouchableOpacity>
             </View>
-            <TouchableOpacity style={styles.btnPrimary} onPress={() => navigation.navigate('Main')}>
-              <Text style={styles.btnText}>Sign in</Text>
+            <TouchableOpacity
+              style={[styles.btnPrimary, loading && styles.btnDisabled]}
+              onPress={handleLogin}
+              disabled={loading}
+            >
+              <Text style={styles.btnText}>
+                {loading ? "Signing in..." : "Sign in"}
+              </Text>
             </TouchableOpacity>
             <View style={styles.dividerRow}>
               <View style={styles.divider} />
               <Text style={styles.dividerText}>Or continue with</Text>
               <View style={styles.divider} />
             </View>
-            <TouchableOpacity style={styles.googleBtn}>
+            <TouchableOpacity
+              style={[styles.googleBtn, loading && styles.btnDisabled]}
+              onPress={handleGoogleSignIn}
+              disabled={loading}
+            >
               <Text style={styles.googleG}>G </Text>
               <Text style={styles.googleText}>Sign in with Google</Text>
             </TouchableOpacity>
@@ -68,45 +276,88 @@ export default function LoginScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F0F0F5' },
-  container: { flexGrow: 1, alignItems: 'center', padding: 24, paddingTop: 40 },
+  safe: { flex: 1, backgroundColor: "#F0F0F5" },
+  container: { flexGrow: 1, alignItems: "center", padding: 24, paddingTop: 40 },
+  backButton: {
+    alignSelf: "flex-start",
+    marginBottom: 10,
+  },
+  backButtonText: { fontSize: 14, color: "#5B3FD9", fontWeight: "600" },
   logoBox: {
-    width: 52, height: 52, borderRadius: 14,
-    backgroundColor: '#5B3FD9', justifyContent: 'center', alignItems: 'center', marginBottom: 16,
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: "#5B3FD9",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
   },
-  logoText: { color: '#fff', fontSize: 22, fontWeight: '700' },
-  title: { fontSize: 22, fontWeight: '700', color: '#1a1a1a', marginBottom: 6 },
-  subtitle: { fontSize: 13, color: '#666', marginBottom: 24 },
+  logoText: { color: "#fff", fontSize: 22, fontWeight: "700" },
+  title: { fontSize: 22, fontWeight: "700", color: "#1a1a1a", marginBottom: 6 },
+  subtitle: { fontSize: 13, color: "#666", marginBottom: 24 },
   card: {
-    backgroundColor: '#fff', borderRadius: 16, padding: 20, width: '100%',
-    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 20,
+    width: "100%",
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  label: { fontSize: 13, color: '#444', marginBottom: 6, marginTop: 12 },
+  label: { fontSize: 13, color: "#444", marginBottom: 6, marginTop: 12 },
   input: {
-    borderWidth: 1, borderColor: '#E0E0E0', borderRadius: 8,
-    padding: 12, fontSize: 14, color: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 14,
+    color: "#1a1a1a",
   },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 },
-  checkRow: { flexDirection: 'row', alignItems: 'center' },
+  row: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 12,
+  },
+  errorText: { marginTop: 10, color: "#D93025", fontSize: 13 },
+  checkRow: { flexDirection: "row", alignItems: "center" },
   checkbox: {
-    width: 16, height: 16, borderWidth: 1.5, borderColor: '#999',
-    borderRadius: 3, marginRight: 8,
+    width: 16,
+    height: 16,
+    borderWidth: 1.5,
+    borderColor: "#999",
+    borderRadius: 3,
+    marginRight: 8,
   },
-  checkboxChecked: { backgroundColor: '#5B3FD9', borderColor: '#5B3FD9' },
-  rememberText: { fontSize: 13, color: '#444' },
-  forgotText: { fontSize: 13, color: '#5B3FD9', fontWeight: '600' },
+  checkboxChecked: { backgroundColor: "#5B3FD9", borderColor: "#5B3FD9" },
+  rememberText: { fontSize: 13, color: "#444" },
+  forgotText: { fontSize: 13, color: "#5B3FD9", fontWeight: "600" },
   btnPrimary: {
-    backgroundColor: '#5B3FD9', borderRadius: 8, padding: 15,
-    alignItems: 'center', marginTop: 20,
+    backgroundColor: "#5B3FD9",
+    borderRadius: 8,
+    padding: 15,
+    alignItems: "center",
+    marginTop: 20,
   },
-  btnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  dividerRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 16 },
-  divider: { flex: 1, height: 1, backgroundColor: '#E5E5E5' },
-  dividerText: { marginHorizontal: 10, color: '#999', fontSize: 13 },
+  btnDisabled: { opacity: 0.6 },
+  btnText: { color: "#fff", fontSize: 15, fontWeight: "600" },
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 16,
+  },
+  divider: { flex: 1, height: 1, backgroundColor: "#E5E5E5" },
+  dividerText: { marginHorizontal: 10, color: "#999", fontSize: 13 },
   googleBtn: {
-    flexDirection: 'row', borderWidth: 1, borderColor: '#E0E0E0',
-    borderRadius: 8, padding: 13, justifyContent: 'center', alignItems: 'center',
+    flexDirection: "row",
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+    borderRadius: 8,
+    padding: 13,
+    justifyContent: "center",
+    alignItems: "center",
   },
-  googleG: { fontSize: 16, fontWeight: '700', color: '#4285F4' },
-  googleText: { fontSize: 14, color: '#333', fontWeight: '500' },
+  googleG: { fontSize: 16, fontWeight: "700", color: "#4285F4" },
+  googleText: { fontSize: 14, color: "#333", fontWeight: "500" },
 });
