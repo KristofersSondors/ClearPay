@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import {
+  Alert,
   View,
   Text,
   TextInput,
@@ -10,17 +11,66 @@ import {
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { addManualSubscription } from "../src/lib/manualSubscriptions";
+import {
+  sanitizeAmountInput,
+  sanitizeFrequencyInput,
+  sanitizeSubscriptionNameInput,
+  validateSubscriptionInput,
+} from "../src/utils/authSanitization";
 
 const FREQUENCIES = ["Weekly", "Monthly", "Yearly"];
 const CURRENCIES = ["USD", "EUR", "GBP"];
 
 export default function AddSubscriptionScreen({ navigation }) {
-  const [provider, setProvider] = useState("Netflix");
-  const [freq, setFreq] = useState("Weekly");
+  const [provider, setProvider] = useState("");
+  const [freq, setFreq] = useState("Monthly");
   const [freqOpen, setFreqOpen] = useState(false);
   const [amount, setAmount] = useState("0.00");
   const [currency, setCurrency] = useState("USD");
   const [currOpen, setCurrOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    const cleanProvider = sanitizeSubscriptionNameInput(provider);
+    const cleanAmount = sanitizeAmountInput(amount);
+    const cleanFrequency = sanitizeFrequencyInput(freq);
+
+    setProvider(cleanProvider);
+    setAmount(cleanAmount);
+    setFreq(cleanFrequency);
+
+    const errors = validateSubscriptionInput({
+      provider: cleanProvider,
+      amount: cleanAmount,
+      frequency: cleanFrequency,
+      nextPaymentDate: "",
+    });
+
+    if (errors.length > 0) {
+      Alert.alert("Invalid input", errors[0]);
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await addManualSubscription({
+        provider: cleanProvider,
+        frequency: cleanFrequency,
+        amount: cleanAmount,
+        currency,
+      });
+      Alert.alert("Saved", "Subscription added successfully.");
+      navigation.goBack();
+    } catch {
+      Alert.alert(
+        "Save failed",
+        "Could not add this subscription. Please try again.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -38,7 +88,9 @@ export default function AddSubscriptionScreen({ navigation }) {
             <TextInput
               style={styles.input}
               value={provider}
-              onChangeText={setProvider}
+              onChangeText={(value) =>
+                setProvider(sanitizeSubscriptionNameInput(value))
+              }
             />
 
             <Text style={styles.fieldLabel}>Frequency</Text>
@@ -56,7 +108,7 @@ export default function AddSubscriptionScreen({ navigation }) {
                     key={f}
                     style={styles.dropItem}
                     onPress={() => {
-                      setFreq(f);
+                      setFreq(sanitizeFrequencyInput(f));
                       setFreqOpen(false);
                     }}
                   >
@@ -78,7 +130,7 @@ export default function AddSubscriptionScreen({ navigation }) {
               <TextInput
                 style={[styles.input, { flex: 1, marginRight: 8 }]}
                 value={amount}
-                onChangeText={setAmount}
+                onChangeText={(value) => setAmount(sanitizeAmountInput(value))}
                 keyboardType="decimal-pad"
               />
               <TouchableOpacity
@@ -118,13 +170,17 @@ export default function AddSubscriptionScreen({ navigation }) {
             <View style={styles.btnRow}>
               <TouchableOpacity
                 style={styles.btnSave}
-                onPress={() => navigation.goBack()}
+                onPress={handleSave}
+                disabled={saving}
               >
-                <Text style={styles.btnSaveText}>Save Changes</Text>
+                <Text style={styles.btnSaveText}>
+                  {saving ? "Saving..." : "Save Changes"}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.btnCancel}
                 onPress={() => navigation.goBack()}
+                disabled={saving}
               >
                 <Text style={styles.btnCancelText}>Cancel</Text>
               </TouchableOpacity>
