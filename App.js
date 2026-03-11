@@ -1,5 +1,7 @@
 import 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
+import { AppProvider } from './context/AppContext';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Text, View, TouchableOpacity } from 'react-native';
@@ -95,6 +97,8 @@ function MainTabs({ navigation }) {
 
 export default function App() {
   return (
+    <SafeAreaProvider>
+    <AppProvider>
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Welcome" component={WelcomeScreen} />
@@ -109,5 +113,7 @@ export default function App() {
         <Stack.Screen name="CancellationSuccess" component={CancellationSuccessScreen} />
       </Stack.Navigator>
     </NavigationContainer>
+    </AppProvider>
+    </SafeAreaProvider>
   );
 }

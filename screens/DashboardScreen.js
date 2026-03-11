@@ -1,5 +1,13 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { useAppState } from '../context/AppContext';
+import {
+  getMonthlySpend,
+  getYearlyProjection,
+  getActiveSubscriptionsCount,
+  getUpcoming7DaysTotal,
+  getUpcomingPayments,
+} from '../utils/subscriptionMetrics';
 
 const StatCard = ({ label, value, sub, subColor, icon }) => (
   <View style={styles.statCard}>
@@ -15,26 +23,34 @@ const StatCard = ({ label, value, sub, subColor, icon }) => (
 );
 
 export default function DashboardScreen({ navigation }) {
+  const { subscriptions } = useAppState();
+  const monthlySpend = getMonthlySpend(subscriptions);
+  const yearlyProjection = getYearlyProjection(subscriptions);
+  const activeCount = getActiveSubscriptionsCount(subscriptions);
+  const upcoming7Days = getUpcoming7DaysTotal(subscriptions);
+  const upcoming = getUpcomingPayments(subscriptions, 5);
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 30 }}>
       <Text style={styles.pageTitle}>Dashboard</Text>
 
-      <StatCard label="Monthly Spend" value="$130.05" sub="↗ +2.5% vs last month" subColor="#EF4444" icon="💳" />
-      <StatCard label="Yearly Projection" value="$1560.64" sub="Based on active subs" icon="📈" />
-      <StatCard label="Active Subscriptions" value="5" sub="Services active" icon="📅" />
-      <StatCard label="Upcoming (7 Days)" value="$70.98" sub="↗ +2.5% Due this week" subColor="#EF4444" icon="👛" />
+      <StatCard label="Monthly Spend" value={`$${monthlySpend.toFixed(2)}`} sub="Based on active subs" icon="💳" />
+      <StatCard label="Yearly Projection" value={`$${yearlyProjection.toFixed(2)}`} sub="Based on active subs" icon="📈" />
+      <StatCard label="Active Subscriptions" value={String(activeCount)} sub="Services active" icon="📅" />
+      <StatCard label="Upcoming (7 Days)" value={`$${upcoming7Days.toFixed(2)}`} sub="Due this week" icon="👛" />
 
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Upcoming Payments</Text>
         <Text style={styles.sectionSub}>Next 30 Days</Text>
       </View>
 
-      {[
-        { name: 'Netflix', amount: '$15.99', date: 'Feb 23', emoji: '🎬' },
-        { name: 'Spotify Duo', amount: '$12.99', date: 'Feb 25', emoji: '🎵' },
-        { name: 'Adobe CC', amount: '$54.99', date: 'Mar 1', emoji: '🎨' },
-      ].map((item) => (
-        <View key={item.name} style={styles.paymentRow}>
+      {upcoming.map((item) => (
+        <TouchableOpacity
+          key={item.id}
+          style={styles.paymentRow}
+          onPress={() => navigation.navigate('SubscriptionDetail', { subId: item.id })}
+          activeOpacity={0.7}
+        >
           <View style={styles.paymentEmoji}>
             <Text style={{ fontSize: 20 }}>{item.emoji}</Text>
           </View>
@@ -42,8 +58,8 @@ export default function DashboardScreen({ navigation }) {
             <Text style={styles.paymentName}>{item.name}</Text>
             <Text style={styles.paymentDate}>{item.date}</Text>
           </View>
-          <Text style={styles.paymentAmount}>{item.amount}</Text>
-        </View>
+          <Text style={styles.paymentAmount}>${Number(item.amount).toFixed(2)}</Text>
+        </TouchableOpacity>
       ))}
     </ScrollView>
   );

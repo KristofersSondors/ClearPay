@@ -1,21 +1,15 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
-
-const SUBS = [
-  { id: '1', name: 'Netflix', category: 'Entertainment', amount: '$15.99', freq: 'Monthly', emoji: '🎬', color: '#E50914' },
-  { id: '2', name: 'Spotify Duo', category: 'Entertainment', amount: '$12.99', freq: 'Monthly', emoji: '🎵', color: '#1DB954' },
-  { id: '3', name: 'Adobe Creative Cloud', category: 'Software', amount: '$54.99', freq: 'Monthly', emoji: '🎨', color: '#FF0000' },
-  { id: '4', name: 'AWS', category: 'Software', amount: '$34.5', freq: 'Monthly', emoji: '☁️', color: '#FF9900' },
-  { id: '5', name: 'Gym Membership', category: 'Fitness', amount: '$40', freq: 'Monthly', emoji: '💪', color: '#00A651' },
-  { id: '6', name: 'Amazon Prime', category: 'Shopping', amount: '$139', freq: 'Yearly', emoji: '📦', color: '#00A8E0' },
-];
+import { useAppState } from '../context/AppContext';
+import { filterSubscriptions, CATEGORIES, STATUSES } from '../utils/subscriptionFilters';
 
 export default function SubscriptionsScreen({ navigation }) {
+  const { subscriptions } = useAppState();
   const [search, setSearch] = useState('');
+  const [category, setCategory] = useState('All');
+  const [status, setStatus] = useState('All Status');
 
-  const filtered = SUBS.filter((s) =>
-    s.name.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = filterSubscriptions(subscriptions, { search, category, status });
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 30 }}>
@@ -34,31 +28,55 @@ export default function SubscriptionsScreen({ navigation }) {
           />
         </View>
         <View style={styles.filterRow}>
-          <TouchableOpacity style={styles.filterPill}><Text style={styles.filterText}>All</Text></TouchableOpacity>
-          <TouchableOpacity style={styles.filterPill}><Text style={styles.filterText}>All Status</Text></TouchableOpacity>
+          {CATEGORIES.map((c) => (
+            <TouchableOpacity
+              key={c}
+              style={[styles.filterPill, category === c && styles.filterPillActive]}
+              onPress={() => setCategory(c)}
+            >
+              <Text style={[styles.filterText, category === c && styles.filterTextActive]}>{c}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <View style={[styles.filterRow, { marginTop: 6 }]}>
+          {STATUSES.map((s) => (
+            <TouchableOpacity
+              key={s}
+              style={[styles.filterPill, status === s && styles.filterPillActive]}
+              onPress={() => setStatus(s)}
+            >
+              <Text style={[styles.filterText, status === s && styles.filterTextActive]}>{s}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
       </View>
 
-      {filtered.map((sub) => (
-        <TouchableOpacity
-          key={sub.id}
-          style={styles.subRow}
-          onPress={() => navigation.navigate('SubscriptionDetail', { sub })}
-        >
-          <View style={[styles.subIcon, { backgroundColor: sub.color + '22' }]}>
-            <Text style={{ fontSize: 22 }}>{sub.emoji}</Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.subName}>{sub.name}</Text>
-            <Text style={styles.subCat}>{sub.category}</Text>
-          </View>
-          <View style={{ alignItems: 'flex-end' }}>
-            <Text style={styles.subAmount}>{sub.amount}</Text>
-            <Text style={styles.subFreq}>{sub.freq}</Text>
-          </View>
-          <Text style={styles.chevron}>›</Text>
-        </TouchableOpacity>
-      ))}
+      {filtered.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyText}>No subscriptions match your filters.</Text>
+        </View>
+      ) : (
+        filtered.map((sub) => (
+          <TouchableOpacity
+            key={sub.id}
+            style={styles.subRow}
+            onPress={() => navigation.navigate('SubscriptionDetail', { subId: sub.id })}
+          >
+            <View style={[styles.subIcon, { backgroundColor: (sub.color || '#999') + '22' }]}>
+              <Text style={{ fontSize: 22 }}>{sub.emoji || '📦'}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.subName}>{sub.name}</Text>
+              <Text style={styles.subCat}>{sub.category}</Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={styles.subAmount}>${Number(sub.price).toFixed(2)}</Text>
+              <Text style={styles.subFreq}>{sub.frequency}</Text>
+            </View>
+            <Text style={styles.chevron}>›</Text>
+          </TouchableOpacity>
+        ))
+      )}
     </ScrollView>
   );
 }
@@ -76,12 +94,16 @@ const styles = StyleSheet.create({
   },
   searchIcon: { marginRight: 6, fontSize: 14 },
   searchInput: { flex: 1, paddingVertical: 10, fontSize: 14, color: '#1a1a1a' },
-  filterRow: { flexDirection: 'row', gap: 8 },
+  filterRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   filterPill: {
-    flex: 1, borderWidth: 1, borderColor: '#E5E5E5', borderRadius: 8,
-    paddingVertical: 8, alignItems: 'center',
+    borderWidth: 1, borderColor: '#E5E5E5', borderRadius: 8,
+    paddingVertical: 8, paddingHorizontal: 12, alignItems: 'center',
   },
+  filterPillActive: { borderColor: '#5B3FD9', backgroundColor: '#EEE9FF' },
   filterText: { fontSize: 13, color: '#444' },
+  filterTextActive: { color: '#5B3FD9', fontWeight: '600' },
+  emptyState: { padding: 24, alignItems: 'center' },
+  emptyText: { fontSize: 14, color: '#888' },
   subRow: {
     backgroundColor: '#fff', borderRadius: 12, padding: 14,
     flexDirection: 'row', alignItems: 'center', marginBottom: 8,

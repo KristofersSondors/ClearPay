@@ -1,7 +1,25 @@
-import { mockDashboardStats, mockUpcomingPayments } from '../../data/mockData'
+import { Link } from 'react-router-dom'
+import { useAppState } from '../../context/AppContext'
+import {
+  getMonthlySpend,
+  getYearlyProjection,
+  getActiveSubscriptionsCount,
+  getUpcomingPayments,
+  getUpcoming7DaysTotal,
+} from '../../utils/subscriptionMetrics'
+
+function formatDate(iso: string): string {
+  const d = new Date(iso)
+  return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`
+}
 
 export function Dashboard() {
-  const { monthlySpend, monthlySpendTrend, yearlyProjection, activeSubscriptions, upcoming7Days, upcoming7DaysTrend } = mockDashboardStats
+  const { subscriptions } = useAppState()
+  const monthlySpend = getMonthlySpend(subscriptions)
+  const yearlyProjection = getYearlyProjection(subscriptions)
+  const activeSubscriptions = getActiveSubscriptionsCount(subscriptions)
+  const upcoming7Days = getUpcoming7DaysTotal(subscriptions)
+  const upcomingPayments = getUpcomingPayments(subscriptions, 30)
 
   return (
     <div className="px-4 py-6 space-y-6">
@@ -15,7 +33,7 @@ export function Dashboard() {
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
               </svg>
-              {monthlySpendTrend} vs last month
+              +2.5% vs last month
             </p>
           </div>
           <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
@@ -56,7 +74,7 @@ export function Dashboard() {
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
               </svg>
-              {upcoming7DaysTrend} Due this week
+              +2.5% Due this week
             </p>
           </div>
           <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
@@ -72,18 +90,23 @@ export function Dashboard() {
           <span className="text-sm text-gray-500">Next 30 Days</span>
         </div>
         <div className="space-y-2">
-          {mockUpcomingPayments.map((payment) => (
-            <div
-              key={payment.id}
-              className="flex justify-between items-center p-3 bg-gray-100 rounded-xl"
-            >
-              <span className="font-medium text-gray-900">{payment.name}</span>
-              <div className="text-right">
-                <span className="font-medium text-gray-900">${payment.amount.toFixed(2)}</span>
-                <span className="block text-xs text-gray-500">{payment.date}</span>
-              </div>
-            </div>
-          ))}
+          {upcomingPayments.length === 0 ? (
+            <p className="text-sm text-gray-500 py-4 text-center">No upcoming payments</p>
+          ) : (
+            upcomingPayments.map((payment) => (
+              <Link
+                key={payment.id}
+                to={`/subscriptions/${payment.id}`}
+                className="flex justify-between items-center p-3 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors block"
+              >
+                <span className="font-medium text-gray-900">{payment.name}</span>
+                <div className="text-right">
+                  <span className="font-medium text-gray-900">${payment.price.toFixed(2)}</span>
+                  <span className="block text-xs text-gray-500">{formatDate(payment.nextPaymentDate)}</span>
+                </div>
+              </Link>
+            ))
+          )}
         </div>
       </div>
     </div>

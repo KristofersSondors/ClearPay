@@ -1,17 +1,17 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Dimensions } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
-import Svg, { G, Path, Circle } from 'react-native-svg';
+import Svg, { G, Path } from 'react-native-svg';
+import { useAppState } from '../context/AppContext';
+import { getCategorySpendData, getMonthlySpend } from '../utils/subscriptionMetrics';
 
 const W = Dimensions.get('window').width - 32;
 
-const DonutChart = () => {
-  const data = [
-    { value: 28.98, color: '#5B3FD9', label: 'Entertainment' },
-    { value: 139, color: '#22C55E', label: 'Shopping' },
-    { value: 89.49, color: '#EC4899', label: 'Software' },
+const DonutChart = ({ data }) => {
+  const chartData = data.length ? data.map(d => ({ ...d, label: d.name })) : [
+    { value: 1, color: '#E5E5E5', label: 'No data' },
   ];
-  const total = data.reduce((s, d) => s + d.value, 0);
+  const total = chartData.reduce((s, d) => s + d.value, 0) || 1;
   const size = 160;
   const cx = size / 2;
   const cy = size / 2;
@@ -19,7 +19,7 @@ const DonutChart = () => {
   const innerR = 32;
 
   let cumulative = 0;
-  const slices = data.map((d) => {
+  const slices = chartData.map((d) => {
     const startAngle = (cumulative / total) * 2 * Math.PI - Math.PI / 2;
     cumulative += d.value;
     const endAngle = (cumulative / total) * 2 * Math.PI - Math.PI / 2;
@@ -46,7 +46,7 @@ const DonutChart = () => {
         </G>
       </Svg>
       <View style={styles.legend}>
-        {data.map((d) => (
+        {chartData.map((d) => (
           <View key={d.label} style={styles.legendItem}>
             <View style={[styles.legendDot, { backgroundColor: d.color }]} />
             <Text style={styles.legendText}>{d.label}</Text>
@@ -58,6 +58,11 @@ const DonutChart = () => {
 };
 
 export default function AnalyticsScreen() {
+  const { subscriptions } = useAppState();
+  const categoryData = getCategorySpendData(subscriptions);
+  const monthlySpend = getMonthlySpend(subscriptions);
+  const trendData = [monthlySpend * 0.9, monthlySpend * 0.95, monthlySpend, monthlySpend * 1.02];
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 30 }}>
       <Text style={styles.pageTitle}>Analytics</Text>
@@ -67,7 +72,7 @@ export default function AnalyticsScreen() {
         <LineChart
           data={{
             labels: ['Jan', 'Feb', 'Mar', 'Apr'],
-            datasets: [{ data: [115, 125, 132, 130] }],
+            datasets: [{ data: trendData.map(v => Math.round(v)) }],
           }}
           width={W - 16}
           height={180}
@@ -89,7 +94,7 @@ export default function AnalyticsScreen() {
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Spend by Category</Text>
-        <DonutChart />
+        <DonutChart data={categoryData} />
       </View>
     </ScrollView>
   );

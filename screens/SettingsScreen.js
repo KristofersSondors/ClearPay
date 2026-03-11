@@ -1,18 +1,15 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-
-const BANKS = [
-  { id: 'swedbank', name: 'Swedbank', color: '#FF6600' },
-  { id: 'seb', name: 'S|E|B', color: '#000' },
-  { id: 'revolut', name: 'Revolut', color: '#000' },
-  { id: 'luminor', name: 'Luminor', color: '#1A3A5C' },
-];
+import { useAppState, useAppActions } from '../context/AppContext';
 
 export default function SettingsScreen({ navigation }) {
-  const [connected, setConnected] = useState(['swedbank']);
+  const { profile, banks } = useAppState();
+  const { toggleBank, resetAppState } = useAppActions();
 
-  const toggle = (id) =>
-    setConnected((prev) => prev.includes(id) ? prev.filter((b) => b !== id) : [...prev, id]);
+  const handleSignOut = () => {
+    resetAppState();
+    navigation.reset({ index: 0, routes: [{ name: 'Welcome' }] });
+  };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
@@ -25,8 +22,8 @@ export default function SettingsScreen({ navigation }) {
             <Text style={{ fontSize: 28 }}>🏔️</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.profileName}>Alex Design</Text>
-            <Text style={styles.profileEmail}>alex@example.com</Text>
+            <Text style={styles.profileName}>{profile?.name || 'Alex Design'}</Text>
+            <Text style={styles.profileEmail}>{profile?.email || 'alex@example.com'}</Text>
             <View style={styles.planBadge}><Text style={styles.planText}>Free Plan</Text></View>
           </View>
         </View>
@@ -42,13 +39,13 @@ export default function SettingsScreen({ navigation }) {
           Link your bank accounts to automatically detect subscriptions and recurring payments.
           We use bank-level 256-bit encryption.
         </Text>
-        {BANKS.map((bank) => {
-          const isConnected = connected.includes(bank.id);
+        {banks.map((bank) => {
+          const isConnected = bank.connected;
           return (
             <TouchableOpacity
               key={bank.id}
               style={[styles.bankRow, isConnected && styles.bankRowConnected]}
-              onPress={() => toggle(bank.id)}
+              onPress={() => toggleBank(bank.id)}
             >
               <Text style={[styles.bankName, { color: bank.color }]}>{bank.name}</Text>
               {isConnected ? (
@@ -82,7 +79,7 @@ export default function SettingsScreen({ navigation }) {
         ))}
       </View>
 
-      <TouchableOpacity style={styles.signOutBtn} onPress={() => navigation.navigate('Welcome')}>
+      <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
         <Text style={styles.signOutText}>⇥  Sign Out</Text>
       </TouchableOpacity>
 

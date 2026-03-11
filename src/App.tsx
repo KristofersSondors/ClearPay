@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { AppProvider } from './context/AppContext'
 import { MobileViewport } from './components/layout/MobileViewport'
 import { AppLayout } from './components/layout/AppLayout'
 import { Welcome } from './pages/auth/Welcome'
@@ -13,10 +14,14 @@ import { AddSubscription } from './pages/subscriptions/AddSubscription'
 import { Analytics } from './pages/analytics/Analytics'
 import { Settings } from './pages/settings/Settings'
 import { EditProfile } from './pages/settings/EditProfile'
+import { CurrencyRegion } from './pages/settings/CurrencyRegion'
+import { Notifications } from './pages/settings/Notifications'
+import { PrivacySecurity } from './pages/settings/PrivacySecurity'
 
 function App() {
   return (
     <BrowserRouter>
+      <AppProvider>
       <MobileViewport>
         <Routes>
           <Route path="/" element={<Welcome />} />
@@ -31,9 +36,13 @@ function App() {
           <Route path="/analytics" element={<AppLayout><Analytics /></AppLayout>} />
           <Route path="/settings" element={<AppLayout><Settings /></AppLayout>} />
           <Route path="/settings/edit-profile" element={<AppLayout><EditProfile /></AppLayout>} />
+          <Route path="/settings/currency" element={<AppLayout><CurrencyRegion /></AppLayout>} />
+          <Route path="/settings/notifications" element={<AppLayout><Notifications /></AppLayout>} />
+          <Route path="/settings/privacy" element={<AppLayout><PrivacySecurity /></AppLayout>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </MobileViewport>
+      </AppProvider>
     </BrowserRouter>
   )
 }

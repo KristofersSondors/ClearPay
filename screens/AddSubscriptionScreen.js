@@ -10,17 +10,34 @@ import {
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useAppActions } from "../context/AppContext";
 
 const FREQUENCIES = ["Weekly", "Monthly", "Yearly"];
 const CURRENCIES = ["USD", "EUR", "GBP"];
+const CATEGORIES = ["Entertainment", "Software", "Fitness", "Shopping", "Other"];
 
 export default function AddSubscriptionScreen({ navigation }) {
-  const [provider, setProvider] = useState("Netflix");
-  const [freq, setFreq] = useState("Weekly");
+  const { addSubscription } = useAppActions();
+  const [provider, setProvider] = useState("");
+  const [category, setCategory] = useState("Entertainment");
+  const [catOpen, setCatOpen] = useState(false);
+  const [freq, setFreq] = useState("Monthly");
   const [freqOpen, setFreqOpen] = useState(false);
-  const [amount, setAmount] = useState("0.00");
+  const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState("USD");
   const [currOpen, setCurrOpen] = useState(false);
+
+  const handleSave = () => {
+    const price = parseFloat(amount) || 0;
+    if (!provider.trim() || price <= 0) return;
+    addSubscription({
+      name: provider.trim(),
+      category,
+      price,
+      frequency: freq,
+    });
+    navigation.goBack();
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -39,7 +56,34 @@ export default function AddSubscriptionScreen({ navigation }) {
               style={styles.input}
               value={provider}
               onChangeText={setProvider}
+              placeholder="e.g. Netflix"
+              placeholderTextColor="#aaa"
             />
+
+            <Text style={styles.fieldLabel}>Category</Text>
+            <TouchableOpacity
+              style={styles.select}
+              onPress={() => setCatOpen(!catOpen)}
+            >
+              <Text style={styles.selectText}>{category}</Text>
+              <Text style={styles.arrow}>{catOpen ? "▲" : "▼"}</Text>
+            </TouchableOpacity>
+            {catOpen && (
+              <View style={styles.dropdown}>
+                {CATEGORIES.map((c) => (
+                  <TouchableOpacity
+                    key={c}
+                    style={styles.dropItem}
+                    onPress={() => {
+                      setCategory(c);
+                      setCatOpen(false);
+                    }}
+                  >
+                    <Text style={[styles.dropText, category === c && styles.dropTextActive]}>{c}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
 
             <Text style={styles.fieldLabel}>Frequency</Text>
             <TouchableOpacity
@@ -118,7 +162,7 @@ export default function AddSubscriptionScreen({ navigation }) {
             <View style={styles.btnRow}>
               <TouchableOpacity
                 style={styles.btnSave}
-                onPress={() => navigation.goBack()}
+                onPress={handleSave}
               >
                 <Text style={styles.btnSaveText}>Save Changes</Text>
               </TouchableOpacity>

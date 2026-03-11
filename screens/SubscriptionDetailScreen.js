@@ -1,14 +1,49 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch,
 } from 'react-native';
+import { useAppState, useAppActions } from '../context/AppContext';
 
 export default function SubscriptionDetailScreen({ route, navigation }) {
-  const { sub } = route.params;
-  const [notify, setNotify] = useState(true);
-  const [daysBefore, setDaysBefore] = useState('3 days');
+  const { subId } = route.params || {};
+  const { subscriptions } = useAppState();
+  const { cancelSubscription, updateSubscription } = useAppActions();
+  const sub = subscriptions.find((s) => s.id === subId);
+  const [notify, setNotify] = useState(sub?.notify ?? true);
+  const [daysBefore, setDaysBefore] = useState(sub?.daysBefore ?? '3 days');
 
   const days = ['1 day', '3 days', '7 days', '14 days'];
+
+  useEffect(() => {
+    if (sub) {
+      setNotify(sub.notify ?? true);
+      setDaysBefore(sub.daysBefore ?? '3 days');
+    }
+  }, [sub?.id]);
+
+  const handleNotifyChange = (v) => {
+    setNotify(v);
+    if (subId) updateSubscription(subId, { notify: v });
+  };
+  const handleDaysChange = (d) => {
+    setDaysBefore(d);
+    if (subId) updateSubscription(subId, { daysBefore: d });
+  };
+  const handleCancel = () => {
+    if (subId) cancelSubscription(subId);
+    navigation.navigate('CancellationSuccess');
+  };
+
+  if (!sub) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={styles.heroName}>Subscription not found</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Text style={styles.backText}>← Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
@@ -26,17 +61,17 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
       <View style={styles.infoCard}>
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Next payment date:</Text>
-          <Text style={styles.infoValue}>2/23/2026</Text>
+          <Text style={styles.infoValue}>{sub.nextDate || 'Soon'}</Text>
         </View>
         <View style={styles.divider} />
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Amount:</Text>
-          <Text style={styles.infoValue}>USD {sub.amount} / m.</Text>
+          <Text style={styles.infoValue}>USD ${Number(sub.price).toFixed(2)} / m.</Text>
         </View>
         <View style={styles.divider} />
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Frequency:</Text>
-          <Text style={styles.infoValue}>{sub.freq}</Text>
+          <Text style={styles.infoValue}>{sub.frequency}</Text>
         </View>
         <View style={styles.divider} />
         <View style={styles.infoRow}>
@@ -45,18 +80,22 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
         </View>
       </View>
 
-      <TouchableOpacity
-        style={styles.cancelBtn}
-        onPress={() => navigation.navigate('CancellationSuccess')}
-      >
-        <Text style={styles.cancelBtnText}>⊖  Cancel subscription</Text>
-      </TouchableOpacity>
+      {sub.status !== 'cancelled' && (
+        <TouchableOpacity style={styles.cancelBtn} onPress={handleCancel}>
+          <Text style={styles.cancelBtnText}>⊖  Cancel subscription</Text>
+        </TouchableOpacity>
+      )}
+      {sub.status === 'cancelled' && (
+        <View style={[styles.cancelBtn, { backgroundColor: '#94A3B8' }]}>
+          <Text style={styles.cancelBtnText}>Cancelled</Text>
+        </View>
+      )}
 
       <View style={styles.notifyRow}>
         <Text style={styles.notifyLabel}>I want to be notified before my next payment</Text>
         <Switch
           value={notify}
-          onValueChange={setNotify}
+          onValueChange={handleNotifyChange}
           trackColor={{ true: '#5B3FD9' }}
           thumbColor="#fff"
         />
@@ -68,7 +107,7 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
           <TouchableOpacity
             key={d}
             style={[styles.dayPill, daysBefore === d && styles.dayPillActive]}
-            onPress={() => setDaysBefore(d)}
+            onPress={() => handleDaysChange(d)}
           >
             <Text style={[styles.dayText, daysBefore === d && styles.dayTextActive]}>{d}</Text>
           </TouchableOpacity>

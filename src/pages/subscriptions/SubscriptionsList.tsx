@@ -1,7 +1,23 @@
-import { mockSubscriptions } from '../../data/mockData'
+import { useState } from 'react'
+import { useAppState } from '../../context/AppContext'
+import { filterSubscriptions } from '../../utils/subscriptionFilters'
 import { SubscriptionCard } from '../../components/features/SubscriptionCard'
 
+const CATEGORIES = ['all', 'Entertainment', 'Software', 'Fitness', 'Shopping']
+const STATUSES = ['all', 'active', 'cancelled']
+
+function formatFrequency(f: string): string {
+  return f.charAt(0).toUpperCase() + f.slice(1)
+}
+
 export function SubscriptionsList() {
+  const { subscriptions } = useAppState()
+  const [searchTerm, setSearchTerm] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('all')
+
+  const filtered = filterSubscriptions(subscriptions, searchTerm, categoryFilter, statusFilter)
+
   return (
     <div className="px-4 py-6 space-y-6">
       <div>
@@ -20,21 +36,59 @@ export function SubscriptionsList() {
         <input
           type="text"
           placeholder="Search..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
           className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#6B5B95]/50"
         />
       </div>
-      <div className="flex gap-2">
-        <button className="px-4 py-2 rounded-xl bg-[#6B5B95] text-white text-sm font-medium">
-          All
-        </button>
-        <button className="px-4 py-2 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50">
-          All Status
-        </button>
+      <div className="flex flex-wrap gap-2">
+        {CATEGORIES.map((cat) => (
+          <button
+            key={cat}
+            onClick={() => setCategoryFilter(cat)}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+              categoryFilter === cat
+                ? 'bg-[#6B5B95] text-white'
+                : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            {cat === 'all' ? 'All' : cat}
+          </button>
+        ))}
+        {STATUSES.map((st) => (
+          <button
+            key={st}
+            onClick={() => setStatusFilter(st)}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+              statusFilter === st
+                ? 'bg-[#6B5B95] text-white'
+                : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            {st === 'all' ? 'All Status' : st.charAt(0).toUpperCase() + st.slice(1)}
+          </button>
+        ))}
       </div>
       <div className="space-y-3">
-        {mockSubscriptions.map((sub) => (
-          <SubscriptionCard key={sub.id} {...sub} />
-        ))}
+        {filtered.length === 0 ? (
+          <p className="text-sm text-gray-500 py-8 text-center">
+            No subscriptions match your search or filters.
+          </p>
+        ) : (
+          filtered.map((sub) => (
+            <SubscriptionCard
+              key={sub.id}
+              id={sub.id}
+              name={sub.name}
+              category={sub.category}
+              price={sub.price}
+              frequency={formatFrequency(sub.frequency)}
+              logo={sub.logo}
+              logoBg={sub.logoBg}
+              logoColor={sub.logoColor}
+            />
+          ))
+        )}
       </div>
     </div>
   )

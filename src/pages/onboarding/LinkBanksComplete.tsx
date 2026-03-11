@@ -1,13 +1,11 @@
-import { Link } from 'react-router-dom'
-
-const banks = [
-  { name: 'Swedbank', color: 'text-orange-500', connected: true },
-  { name: 'S|E|B', color: 'text-green-700', connected: false },
-  { name: 'Revolut', color: 'text-gray-900', connected: false },
-  { name: 'Luminor', color: 'text-[#6B5B95]', connected: false },
-]
+import { Link, useNavigate } from 'react-router-dom'
+import { useAppState, useAppActions } from '../../context/AppContext'
 
 export function LinkBanksComplete() {
+  const navigate = useNavigate()
+  const { banks } = useAppState()
+  const { connectBank } = useAppActions()
+
   return (
     <div className="min-h-screen bg-white flex flex-col px-6 py-8">
       <div className="w-full max-w-sm mx-auto space-y-6">
@@ -46,21 +44,25 @@ export function LinkBanksComplete() {
                   Connected
                 </span>
               ) : (
-                <span className="text-sm text-gray-500 cursor-pointer hover:text-[#6B5B95]">
+                <button
+                  type="button"
+                  onClick={() => connectBank(bank.name)}
+                  className="text-sm text-gray-500 hover:text-[#6B5B95]"
+                >
                   Connect
-                </span>
+                </button>
               )}
             </div>
           ))}
         </div>
-        <Link
-          to="/dashboard"
+        <button
+          onClick={() => navigate('/dashboard')}
           className="block w-full py-3 rounded-xl bg-[#6B5B95] text-white font-medium text-center hover:bg-[#5A4A7D] transition-colors"
         >
           Finish & Go to Dashboard
-        </Link>
+        </button>
         <Link
-          to="/signup"
+          to="/onboarding/banks"
           className="block text-center text-sm text-gray-500 hover:text-gray-700"
         >
           Back to details

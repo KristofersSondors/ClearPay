@@ -11,9 +11,17 @@ import {
   Cell,
   Legend,
 } from 'recharts'
-import { mockMonthlySpendData, mockCategorySpendData } from '../../data/mockData'
+import { mockMonthlySpendData } from '../../data/mockData'
+import { useAppState } from '../../context/AppContext'
+import { getCategorySpendData } from '../../utils/subscriptionMetrics'
 
 export function Analytics() {
+  const { subscriptions } = useAppState()
+  const categorySpendData = getCategorySpendData(subscriptions)
+  const chartData = categorySpendData.length > 0 ? categorySpendData : [
+    { name: 'No data', value: 1, color: '#e5e7eb' },
+  ]
+
   return (
     <div className="px-4 py-6 space-y-6">
       <h1 className="text-2xl font-bold text-gray-900">Analytics</h1>
@@ -43,7 +51,7 @@ export function Analytics() {
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
-                data={mockCategorySpendData}
+                data={chartData}
                 cx="50%"
                 cy="50%"
                 innerRadius={40}
@@ -52,7 +60,7 @@ export function Analytics() {
                 dataKey="value"
                 nameKey="name"
               >
-                {mockCategorySpendData.map((entry, index) => (
+                {chartData.map((entry, index) => (
                   <Cell key={index} fill={entry.color} />
                 ))}
               </Pie>

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,10 +10,25 @@ import {
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useAppState, useAppActions } from "../context/AppContext";
 
 export default function EditProfileScreen({ navigation }) {
-  const [name, setName] = useState("Alex Design");
-  const [email, setEmail] = useState("alex@example.com");
+  const { profile } = useAppState();
+  const { updateProfile } = useAppActions();
+  const [name, setName] = useState(profile?.name || "Alex Design");
+  const [email, setEmail] = useState(profile?.email || "alex@example.com");
+
+  useEffect(() => {
+    if (profile) {
+      setName(profile.name || "Alex Design");
+      setEmail(profile.email || "alex@example.com");
+    }
+  }, [profile?.name, profile?.email]);
+
+  const handleSave = () => {
+    updateProfile({ name, email });
+    navigation.goBack();
+  };
   const [currentPw, setCurrentPw] = useState("");
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
@@ -89,7 +104,7 @@ export default function EditProfileScreen({ navigation }) {
             <View style={styles.btnRow}>
               <TouchableOpacity
                 style={styles.btnSave}
-                onPress={() => navigation.goBack()}
+                onPress={handleSave}
               >
                 <Text style={styles.btnSaveText}>Save Changes</Text>
               </TouchableOpacity>

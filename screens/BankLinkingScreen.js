@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import {
   View,
   Text,
@@ -7,25 +7,19 @@ import {
   ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-
-const BANKS = [
-  { id: "swedbank", name: "Swedbank", color: "#FF6600" },
-  { id: "seb", name: "S|E|B", color: "#000" },
-  { id: "revolut", name: "Revolut", color: "#000" },
-  { id: "luminor", name: "Luminor", color: "#1A3A5C" },
-];
+import { useAppState, useAppActions } from "../context/AppContext";
 
 export default function BankLinkingScreen({ navigation, route }) {
-  const [connected, setConnected] = useState([]);
+  const { banks } = useAppState();
+  const { toggleBank } = useAppActions();
   const showSignupSuccess = Boolean(route?.params?.signupSuccess);
 
-  const toggle = (id) => {
-    setConnected((prev) =>
-      prev.includes(id) ? prev.filter((b) => b !== id) : [...prev, id],
-    );
-  };
+  const connectedCount = banks.filter((b) => b.connected).length;
+  const canProceed = connectedCount > 0;
 
-  const canProceed = connected.length > 0;
+  const handleFinish = () => {
+    navigation.navigate("Main");
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -53,13 +47,13 @@ export default function BankLinkingScreen({ navigation, route }) {
           </View>
         ) : null}
 
-        {BANKS.map((bank) => {
-          const isConnected = connected.includes(bank.id);
+        {banks.map((bank) => {
+          const isConnected = bank.connected;
           return (
             <TouchableOpacity
               key={bank.id}
               style={[styles.bankRow, isConnected && styles.bankRowConnected]}
-              onPress={() => toggle(bank.id)}
+              onPress={() => toggleBank(bank.id)}
             >
               <Text style={[styles.bankName, { color: bank.color }]}>
                 {bank.name}
@@ -77,7 +71,7 @@ export default function BankLinkingScreen({ navigation, route }) {
 
         <TouchableOpacity
           style={[styles.btnPrimary, canProceed && styles.btnActive]}
-          onPress={() => canProceed && navigation.navigate("Main")}
+          onPress={() => canProceed && handleFinish()}
         >
           <Text style={styles.btnText}>
             {canProceed ? "Finish & Go to Dashboard" : "Link at least 1 bank"}
