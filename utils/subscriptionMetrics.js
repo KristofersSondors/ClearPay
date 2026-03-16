@@ -18,14 +18,38 @@ export function getActiveSubscriptionsCount(subscriptions) {
   return subscriptions.filter(s => s.status !== 'cancelled').length;
 }
 
-export function getUpcoming7DaysTotal(subscriptions) {
-  const active = subscriptions.filter(s => s.status !== 'cancelled');
-  return active.slice(0, 3).reduce((sum, s) => sum + getMonthlyEquivalent(s.price, s.frequency), 0);
+function parseNextDate(str) {
+  if (!str || str === 'Soon') return null;
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? null : d;
 }
 
-export function getUpcomingPayments(subscriptions, limit = 5) {
+export function getUpcoming7DaysTotal(subscriptions) {
+  const upcoming = getUpcomingPayments(subscriptions, Infinity, 7);
+  return upcoming.reduce((sum, s) => sum + s.amount, 0);
+}
+
+export function getUpcomingPayments(subscriptions, limit = 5, days = 30) {
   const active = subscriptions.filter(s => s.status !== 'cancelled');
-  return active.slice(0, limit).map(s => ({
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const end = new Date(now);
+  end.setDate(end.getDate() + days);
+
+  const withinWindow = active
+    .filter((s) => {
+      const date = parseNextDate(s.nextDate);
+      if (!date) return false;
+      date.setHours(0, 0, 0, 0);
+      return date >= now && date <= end;
+    })
+    .sort((a, b) => {
+      const da = parseNextDate(a.nextDate)?.getTime() ?? Infinity;
+      const db = parseNextDate(b.nextDate)?.getTime() ?? Infinity;
+      return da - db;
+    });
+
+  return withinWindow.slice(0, limit).map(s => ({
     id: s.id,
     name: s.name,
     amount: s.price,

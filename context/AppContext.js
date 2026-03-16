@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const STORAGE_KEY = 'clearpay-app-state';
@@ -116,14 +116,24 @@ export function AppProvider({ children }) {
     setState(getDefaultState());
   }, []);
 
-  const actions = {
-    addSubscription,
-    cancelSubscription,
-    updateSubscription,
-    updateProfile,
-    toggleBank,
-    resetAppState,
-  };
+  const actions = useMemo(
+    () => ({
+      addSubscription,
+      cancelSubscription,
+      updateSubscription,
+      updateProfile,
+      toggleBank,
+      resetAppState,
+    }),
+    [
+      addSubscription,
+      cancelSubscription,
+      updateSubscription,
+      updateProfile,
+      toggleBank,
+      resetAppState,
+    ]
+  );
 
   return (
     <AppStateContext.Provider value={state}>
