@@ -12,6 +12,8 @@ const LIMITS = {
   emailMax: 254,
   passwordMin: 8,
   passwordMax: 128,
+  subscriptionNameMin: 2,
+  subscriptionNameMax: 80,
 };
 
 function normalizeInput(value = "") {
@@ -167,6 +169,240 @@ export function validateSignupInputAll({
 
   if (password && confirmPassword && password !== confirmPassword) {
     errors.push("Passwords do not match.");
+  }
+
+  return [...new Set(errors)];
+}
+
+export function validatePasswordChangeInput({
+  currentPassword,
+  newPassword,
+  confirmPassword,
+}) {
+  const errors = [];
+
+  const wantsPasswordChange =
+    Boolean(currentPassword) ||
+    Boolean(newPassword) ||
+    Boolean(confirmPassword);
+
+  if (!wantsPasswordChange) {
+    return errors;
+  }
+
+  if (!currentPassword || !newPassword || !confirmPassword) {
+    errors.push(
+      "Current password, new password, and confirmation are required to change password.",
+    );
+  }
+
+  if (
+    newPassword &&
+    (newPassword.length < LIMITS.passwordMin ||
+      newPassword.length > LIMITS.passwordMax)
+  ) {
+    errors.push("Password must be between 8 and 128 characters.");
+  }
+
+  if (newPassword && !STRONG_PASSWORD_REGEX.test(newPassword)) {
+    errors.push(
+      "Password must include uppercase, lowercase, number, and special character.",
+    );
+  }
+
+  if (newPassword && confirmPassword && newPassword !== confirmPassword) {
+    errors.push("Passwords do not match.");
+  }
+
+  if (currentPassword && newPassword && currentPassword === newPassword) {
+    errors.push("New password must be different from the current password.");
+  }
+
+  return [...new Set(errors)];
+}
+
+export function sanitizeSubscriptionNameInput(value = "") {
+  return normalizeInput(value)
+    .replace(/[<>]/g, "")
+    .replace(/[^a-zA-Z0-9\s&+.'-]/g, "")
+    .replace(/\s+/g, " ")
+    .slice(0, LIMITS.subscriptionNameMax)
+    .trimStart();
+}
+
+export function sanitizeAmountInput(value = "") {
+  const normalized = normalizeInput(value).replace(/[^\d.]/g, "");
+  const parts = normalized.split(".");
+
+  if (parts.length === 1) {
+    return parts[0];
+  }
+
+  const integerPart = parts[0];
+  const decimalPart = parts.slice(1).join("").slice(0, 2);
+  return `${integerPart}.${decimalPart}`;
+}
+
+export function sanitizeFrequencyInput(value = "") {
+  const allowed = ["Weekly", "Monthly", "Yearly"];
+  return allowed.includes(value) ? value : "Monthly";
+}
+
+function toYyyyMmDd(year, month, day) {
+  const y = Number(year);
+  const m = Number(month);
+  const d = Number(day);
+
+  if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) {
+    return "";
+  }
+
+  if (y < 1900 || y > 9999 || m < 1 || m > 12 || d < 1 || d > 31) {
+    return "";
+  }
+
+  const test = new Date(Date.UTC(y, m - 1, d));
+  if (
+    test.getUTCFullYear() !== y ||
+    test.getUTCMonth() !== m - 1 ||
+    test.getUTCDate() !== d
+  ) {
+    return "";
+  }
+
+  return `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(
+    d,
+  ).padStart(2, "0")}`;
+}
+
+export function sanitizeNextPaymentDateInput(value = "") {
+  const normalized = normalizeInput(value).trim();
+  if (!normalized) {
+    return "";
+  }
+
+  const dashed = normalized
+    .replace(/[./\s]+/g, "-")
+    .replace(/[^\d-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  let match = dashed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (match) {
+    const fixed = toYyyyMmDd(match[1], match[2], match[3]);
+    if (fixed) {
+      return fixed;
+    }
+  }
+
+  match = dashed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (match) {
+    const fixed = toYyyyMmDd(match[3], match[1], match[2]);
+    if (fixed) {
+      return fixed;
+    }
+  }
+
+  const digits = dashed.replace(/-/g, "");
+
+  if (digits.length === 8) {
+    const mmddyyyy = toYyyyMmDd(
+      digits.slice(4, 8),
+      digits.slice(0, 2),
+      digits.slice(2, 4),
+    );
+    if (mmddyyyy) {
+      return mmddyyyy;
+    }
+
+    const ddmmyyyy = toYyyyMmDd(
+      digits.slice(4, 8),
+      digits.slice(2, 4),
+      digits.slice(0, 2),
+    );
+    if (ddmmyyyy) {
+      return ddmmyyyy;
+    }
+  }
+
+  if (digits.length === 7) {
+    const mddyyyy = toYyyyMmDd(
+      digits.slice(3, 7),
+      digits.slice(0, 1),
+      digits.slice(1, 3),
+    );
+    if (mddyyyy) {
+      return mddyyyy;
+    }
+
+    const mmdyyyy = toYyyyMmDd(
+      digits.slice(3, 7),
+      digits.slice(0, 2),
+      digits.slice(2, 3),
+    );
+    if (mmdyyyy) {
+      return mmdyyyy;
+    }
+  }
+
+  return "";
+}
+
+export function parseNextPaymentDateInputToIso(value = "") {
+  const clean = sanitizeNextPaymentDateInput(value);
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
+    return null;
+  }
+
+  const [year, month, day] = clean.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return date.toISOString();
+}
+
+export function validateSubscriptionInput({
+  provider,
+  amount,
+  frequency,
+  nextPaymentDate,
+}) {
+  const errors = [];
+
+  if (!provider || provider.length < LIMITS.subscriptionNameMin) {
+    errors.push("Provider name must be at least 2 characters.");
+  }
+
+  if (provider && hasSuspiciousPattern(provider)) {
+    errors.push("Provider name contains blocked patterns.");
+  }
+
+  if (provider && provider.length > LIMITS.subscriptionNameMax) {
+    errors.push("Provider name is too long.");
+  }
+
+  const parsedAmount = Number.parseFloat(sanitizeAmountInput(amount));
+  if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+    errors.push("Amount must be a valid number greater than 0.");
+  }
+
+  if (!["Weekly", "Monthly", "Yearly"].includes(frequency)) {
+    errors.push("Frequency must be Weekly, Monthly, or Yearly.");
+  }
+
+  if (
+    nextPaymentDate &&
+    parseNextPaymentDateInputToIso(nextPaymentDate) === null
+  ) {
+    errors.push("Next payment date must be in YYYY-MM-DD format.");
   }
 
   return [...new Set(errors)];

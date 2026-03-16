@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import {
+  Alert,
   View,
   Text,
   TextInput,
@@ -10,6 +11,13 @@ import {
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { addManualSubscription } from "../src/lib/manualSubscriptions";
+import {
+  sanitizeAmountInput,
+  sanitizeFrequencyInput,
+  sanitizeSubscriptionNameInput,
+  validateSubscriptionInput,
+} from "../src/utils/authSanitization";
 import { useAppActions } from "../context/AppContext";
 
 const FREQUENCIES = ["Weekly", "Monthly", "Yearly"];
@@ -17,6 +25,8 @@ const CURRENCIES = ["USD", "EUR", "GBP"];
 const CATEGORIES = ["Entertainment", "Software", "Fitness", "Shopping", "Other"];
 
 export default function AddSubscriptionScreen({ navigation }) {
+  const [provider, setProvider] = useState("");
+  const [freq, setFreq] = useState("Monthly");
   const { addSubscription } = useAppActions();
   const [provider, setProvider] = useState("");
   const [category, setCategory] = useState("Entertainment");
@@ -26,6 +36,48 @@ export default function AddSubscriptionScreen({ navigation }) {
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState("USD");
   const [currOpen, setCurrOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    const cleanProvider = sanitizeSubscriptionNameInput(provider);
+    const cleanAmount = sanitizeAmountInput(amount);
+    const cleanFrequency = sanitizeFrequencyInput(freq);
+
+    setProvider(cleanProvider);
+    setAmount(cleanAmount);
+    setFreq(cleanFrequency);
+
+    const errors = validateSubscriptionInput({
+      provider: cleanProvider,
+      amount: cleanAmount,
+      frequency: cleanFrequency,
+      nextPaymentDate: "",
+    });
+
+    if (errors.length > 0) {
+      Alert.alert("Invalid input", errors[0]);
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await addManualSubscription({
+        provider: cleanProvider,
+        frequency: cleanFrequency,
+        amount: cleanAmount,
+        currency,
+      });
+      Alert.alert("Saved", "Subscription added successfully.");
+      navigation.goBack();
+    } catch {
+      Alert.alert(
+        "Save failed",
+        "Could not add this subscription. Please try again.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleSave = () => {
     const price = parseFloat(amount) || 0;
@@ -55,35 +107,10 @@ export default function AddSubscriptionScreen({ navigation }) {
             <TextInput
               style={styles.input}
               value={provider}
-              onChangeText={setProvider}
-              placeholder="e.g. Netflix"
-              placeholderTextColor="#aaa"
+              onChangeText={(value) =>
+                setProvider(sanitizeSubscriptionNameInput(value))
+              }
             />
-
-            <Text style={styles.fieldLabel}>Category</Text>
-            <TouchableOpacity
-              style={styles.select}
-              onPress={() => setCatOpen(!catOpen)}
-            >
-              <Text style={styles.selectText}>{category}</Text>
-              <Text style={styles.arrow}>{catOpen ? "▲" : "▼"}</Text>
-            </TouchableOpacity>
-            {catOpen && (
-              <View style={styles.dropdown}>
-                {CATEGORIES.map((c) => (
-                  <TouchableOpacity
-                    key={c}
-                    style={styles.dropItem}
-                    onPress={() => {
-                      setCategory(c);
-                      setCatOpen(false);
-                    }}
-                  >
-                    <Text style={[styles.dropText, category === c && styles.dropTextActive]}>{c}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
 
             <Text style={styles.fieldLabel}>Frequency</Text>
             <TouchableOpacity
@@ -100,7 +127,7 @@ export default function AddSubscriptionScreen({ navigation }) {
                     key={f}
                     style={styles.dropItem}
                     onPress={() => {
-                      setFreq(f);
+                      setFreq(sanitizeFrequencyInput(f));
                       setFreqOpen(false);
                     }}
                   >
@@ -122,7 +149,7 @@ export default function AddSubscriptionScreen({ navigation }) {
               <TextInput
                 style={[styles.input, { flex: 1, marginRight: 8 }]}
                 value={amount}
-                onChangeText={setAmount}
+                onChangeText={(value) => setAmount(sanitizeAmountInput(value))}
                 keyboardType="decimal-pad"
               />
               <TouchableOpacity
@@ -163,12 +190,17 @@ export default function AddSubscriptionScreen({ navigation }) {
               <TouchableOpacity
                 style={styles.btnSave}
                 onPress={handleSave}
+                disabled={saving}
+                onPress={handleSave}
               >
-                <Text style={styles.btnSaveText}>Save Changes</Text>
+                <Text style={styles.btnSaveText}>
+                  {saving ? "Saving..." : "Save Changes"}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.btnCancel}
                 onPress={() => navigation.goBack()}
+                disabled={saving}
               >
                 <Text style={styles.btnCancelText}>Cancel</Text>
               </TouchableOpacity>

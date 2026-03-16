@@ -191,7 +191,7 @@ export default function LoginScreen({ navigation }) {
       >
         <ScrollView contentContainerStyle={styles.container}>
           <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-            <Text style={styles.backButtonText}>{"< Back"}</Text>
+            <Text style={styles.backButtonText}>← Back</Text>
           </TouchableOpacity>
           <View style={styles.logoBox}>
             <Text style={styles.logoText}>C</Text>
@@ -280,9 +280,9 @@ const styles = StyleSheet.create({
   container: { flexGrow: 1, alignItems: "center", padding: 24, paddingTop: 40 },
   backButton: {
     alignSelf: "flex-start",
-    marginBottom: 10,
+    marginBottom: 6,
   },
-  backButtonText: { fontSize: 14, color: "#5B3FD9", fontWeight: "600" },
+  backButtonText: { fontSize: 14, color: "#5B3FD9", fontWeight: "500" },
   logoBox: {
     width: 52,
     height: 52,
