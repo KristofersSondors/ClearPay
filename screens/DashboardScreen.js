@@ -190,35 +190,6 @@ export default function DashboardScreen({ navigation }) {
         ) : null}
       </View>
 
-      <StatCard
-        label="Monthly Spend"
-        value={formatAmountForDashboard(monthlySpend)}
-        sub="From your added subscriptions"
-        icon="💳"
-      />
-      <StatCard
-        label="Yearly Projection"
-        value={formatAmountForDashboard(yearlyProjection)}
-        sub="Based on monthly totals"
-        icon="📈"
-      />
-      <StatCard
-        label="Active Subscriptions"
-        value={`${activeSubscriptions}`}
-        sub="Manually added"
-        icon="📅"
-      />
-      <StatCard
-        label="Upcoming (7 Days)"
-        value={formatAmountForDashboard(upcomingSevenDaysAmount)}
-        sub={
-          upcomingSevenDaysAmount > 0
-            ? "Due in the next 7 days"
-            : "No upcoming payments this week"
-        }
-        icon="👛"
-      />
-
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Upcoming Payments</Text>
         <Text style={styles.sectionSub}>Next 30 Days</Text>
@@ -257,6 +228,42 @@ export default function DashboardScreen({ navigation }) {
           </View>
         ))
       )}
+
+      <View style={styles.sectionDivider} />
+
+      <View style={styles.summaryHeader}>
+        <Text style={styles.summaryTitle}>Spending Overview</Text>
+        <Text style={styles.summarySub}>Totals and projections</Text>
+      </View>
+
+      <StatCard
+        label="Monthly Spend"
+        value={formatAmountForDashboard(monthlySpend)}
+        sub="From your added subscriptions"
+        icon="💳"
+      />
+      <StatCard
+        label="Yearly Projection"
+        value={formatAmountForDashboard(yearlyProjection)}
+        sub="Based on monthly totals"
+        icon="📈"
+      />
+      <StatCard
+        label="Active Subscriptions"
+        value={`${activeSubscriptions}`}
+        sub="Manually added"
+        icon="📅"
+      />
+      <StatCard
+        label="Upcoming (7 Days)"
+        value={formatAmountForDashboard(upcomingSevenDaysAmount)}
+        sub={
+          upcomingSevenDaysAmount > 0
+            ? "Due in the next 7 days"
+            : "No upcoming payments this week"
+        }
+        icon="👛"
+      />
     </ScrollView>
   );
 }
@@ -319,6 +326,14 @@ const styles = StyleSheet.create({
   sectionHeader: { marginTop: 8, marginBottom: 12 },
   sectionTitle: { fontSize: 18, fontWeight: "700", color: "#1a1a1a" },
   sectionSub: { fontSize: 12, color: "#888" },
+  sectionDivider: {
+    height: 1,
+    backgroundColor: "#E8E8EE",
+    marginVertical: 12,
+  },
+  summaryHeader: { marginBottom: 10 },
+  summaryTitle: { fontSize: 18, fontWeight: "700", color: "#1a1a1a" },
+  summarySub: { fontSize: 12, color: "#888" },
   emptyState: {
     backgroundColor: "#fff",
     borderRadius: 12,
