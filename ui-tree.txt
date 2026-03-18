@@ -1,0 +1,81 @@
+ClearPay App - UI Tree
+======================
+TRIGGER = user taps / types
+ACTION  = what happens after
+======================
+
+ClearPay App
+  │
+  ├── Welcome
+  │     TRIGGER  Tap Log In       ACTION  → Login
+  │     TRIGGER  Tap Sign Up      ACTION  → Register
+  │
+  ├── Login
+  │     TRIGGER  Type email       ACTION  Update field
+  │     TRIGGER  Type password    ACTION  Update field
+  │     TRIGGER  Tap Remember me  ACTION  Toggle on/off
+  │     TRIGGER  Tap Sign In      ACTION  → Dashboard
+  │     TRIGGER  Tap Google       ACTION  → Dashboard
+  │
+  ├── Register
+  │     TRIGGER  Type name        ACTION  Update field
+  │     TRIGGER  Type email       ACTION  Update field
+  │     TRIGGER  Type password    ACTION  Update field
+  │     TRIGGER  Tap Next         ACTION  → Bank Linking
+  │     TRIGGER  Tap Login link   ACTION  → Login
+  │
+  ├── Bank Linking
+  │     TRIGGER  Tap a bank row   ACTION  Toggle connected / disconnected
+  │     TRIGGER  Tap Finish       ACTION  → Dashboard (needs 1+ bank)
+  │     TRIGGER  Tap Back         ACTION  → Register
+  │
+  ├── Dashboard
+  │     TRIGGER  Tap Subs tab       ACTION  → Subscriptions
+  │     TRIGGER  Tap Analytics tab  ACTION  → Analytics
+  │     TRIGGER  Tap +              ACTION  → Add Subscription
+  │     TRIGGER  Tap ⚙              ACTION  → Settings
+  │
+  ├── Subscriptions
+  │     TRIGGER  Type in search     ACTION  Filter list
+  │     TRIGGER  Tap a sub row      ACTION  → Subscription Detail
+  │     TRIGGER  Tap Home tab       ACTION  → Dashboard
+  │     TRIGGER  Tap Analytics tab  ACTION  → Analytics
+  │     TRIGGER  Tap +              ACTION  → Add Subscription
+  │     TRIGGER  Tap ⚙              ACTION  → Settings
+  │
+  ├── Subscription Detail
+  │     TRIGGER  Tap Cancel subscription  ACTION  → Cancellation Success
+  │     TRIGGER  Toggle notify switch     ACTION  On / off
+  │     TRIGGER  Tap days pill            ACTION  Set 1 / 3 / 7 / 14 days
+  │     TRIGGER  Tap ← Back              ACTION  → Subscriptions
+  │
+  ├── Cancellation Success
+  │     TRIGGER  Tap OK    ACTION  → Dashboard
+  │
+  ├── Analytics
+  │     TRIGGER  Tap Home tab   ACTION  → Dashboard
+  │     TRIGGER  Tap Subs tab   ACTION  → Subscriptions
+  │     TRIGGER  Tap +          ACTION  → Add Subscription
+  │     TRIGGER  Tap ⚙          ACTION  → Settings
+  │
+  ├── Add Subscription
+  │     TRIGGER  Type provider name      ACTION  Update field
+  │     TRIGGER  Tap frequency dropdown  ACTION  Show Weekly / Monthly / Yearly
+  │     TRIGGER  Type amount             ACTION  Update field
+  │     TRIGGER  Tap currency            ACTION  Show USD / EUR / GBP
+  │     TRIGGER  Tap Save                ACTION  → back
+  │     TRIGGER  Tap Cancel              ACTION  → back
+  │
+  ├── Settings
+  │     TRIGGER  Tap Edit Profile   ACTION  → Edit Profile
+  │     TRIGGER  Tap bank row       ACTION  Toggle connected / disconnected
+  │     TRIGGER  Tap Sign Out       ACTION  → Welcome
+  │     TRIGGER  Tap Home tab       ACTION  → Dashboard
+  │     TRIGGER  Tap Subs tab       ACTION  → Subscriptions
+  │     TRIGGER  Tap Analytics tab  ACTION  → Analytics
+  │
+  └── Edit Profile
+        TRIGGER  Edit name / email / password  ACTION  Update fields
+        TRIGGER  Tap Upload Photo              ACTION  (placeholder)
+        TRIGGER  Tap Save Changes              ACTION  → Settings
+        TRIGGER  Tap Cancel                    ACTION  → Settings
