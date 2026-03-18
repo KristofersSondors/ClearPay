@@ -2,6 +2,7 @@
   "expo": {
     "name": "ClearPayApp",
     "slug": "ClearPayApp",
+    "scheme": "clearpay",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -13,7 +14,11 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.anonymous.ClearPayApp",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "ClearPay uses your photo library so you can choose a profile picture."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -24,6 +29,9 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "@react-native-community/datetimepicker"
+    ]
   }
 }
