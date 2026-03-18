@@ -19,6 +19,10 @@ import {
   sanitizeNextPaymentDateInput,
   validateSubscriptionInput,
 } from "../src/utils/authSanitization";
+import {
+  TOGGLE_TRACK_COLOR,
+  getToggleThumbColor,
+} from "../src/lib/toggleBehavior";
 
 const FREQUENCIES = ["Weekly", "Monthly", "Yearly"];
 const WEEK_DAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
@@ -293,8 +297,8 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
           <Switch
             value={notify}
             onValueChange={setNotify}
-            trackColor={{ true: "#5B3FD9" }}
-            thumbColor="#fff"
+            trackColor={TOGGLE_TRACK_COLOR}
+            thumbColor={getToggleThumbColor(notify)}
           />
         </View>
 

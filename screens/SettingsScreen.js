@@ -14,6 +14,10 @@ import {
   getSupabaseClient,
   hasSupabaseConfig,
 } from "../src/lib/supabase";
+import {
+  getPreferredCurrency,
+  getCurrencyPreferenceLabel,
+} from "../src/lib/currencyPreferences";
 
 const BANKS = [
   { id: "swedbank", name: "Swedbank", color: "#FF6600" },
@@ -24,6 +28,7 @@ const BANKS = [
 
 export default function SettingsScreen({ navigation }) {
   const [connected, setConnected] = useState(["swedbank"]);
+  const [preferredCurrency, setPreferredCurrency] = useState("USD");
   const [profile, setProfile] = useState({
     name: "Your Profile",
     email: "Sign in to load your account",
@@ -40,6 +45,9 @@ export default function SettingsScreen({ navigation }) {
 
   useEffect(() => {
     const loadProfile = async () => {
+      const preferred = await getPreferredCurrency();
+      setPreferredCurrency(preferred);
+
       if (!hasSupabaseConfig) {
         setProfileError("Supabase is not configured.");
         return;
@@ -171,11 +179,30 @@ export default function SettingsScreen({ navigation }) {
         <Text style={styles.sectionLabel}>Preferences</Text>
         <View style={styles.card}>
           {[
-            { icon: "💳", label: "Currency & Region", value: "USD ($)" },
-            { icon: "🔔", label: "Notifications", value: "" },
-            { icon: "🔒", label: "Privacy & Security", value: "" },
+            {
+              icon: "💳",
+              label: "Currency & Region",
+              value: getCurrencyPreferenceLabel(preferredCurrency),
+              onPress: () => navigation.navigate("CurrencySettings"),
+            },
+            {
+              icon: "🔔",
+              label: "Notifications",
+              value: "",
+              onPress: () => navigation.navigate("NotificationsSettings"),
+            },
+            {
+              icon: "🔒",
+              label: "Privacy & Security",
+              value: "",
+              onPress: () => navigation.navigate("PrivacySecuritySettings"),
+            },
           ].map((item) => (
-            <TouchableOpacity key={item.label} style={styles.prefRow}>
+            <TouchableOpacity
+              key={item.label}
+              style={styles.prefRow}
+              onPress={item.onPress}
+            >
               <Text style={styles.prefIcon}>{item.icon}</Text>
               <Text style={styles.prefLabel}>{item.label}</Text>
               <View style={{ flex: 1, alignItems: "flex-end" }}>

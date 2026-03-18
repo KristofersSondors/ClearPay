@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
   View,
@@ -18,6 +18,7 @@ import {
   sanitizeSubscriptionNameInput,
   validateSubscriptionInput,
 } from "../src/utils/authSanitization";
+import { getPreferredCurrency } from "../src/lib/currencyPreferences";
 
 const FREQUENCIES = ["Weekly", "Monthly", "Yearly"];
 const CURRENCIES = ["USD", "EUR", "GBP"];
@@ -30,6 +31,17 @@ export default function AddSubscriptionScreen({ navigation }) {
   const [currency, setCurrency] = useState("USD");
   const [currOpen, setCurrOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const loadPreferredCurrency = async () => {
+      const preferred = await getPreferredCurrency();
+      if (CURRENCIES.includes(preferred)) {
+        setCurrency(preferred);
+      }
+    };
+
+    loadPreferredCurrency();
+  }, []);
 
   const handleSave = async () => {
     const cleanProvider = sanitizeSubscriptionNameInput(provider);

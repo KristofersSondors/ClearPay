@@ -3,6 +3,14 @@ import { View, Text, StyleSheet, ScrollView, Dimensions } from "react-native";
 import { LineChart } from "react-native-chart-kit";
 import Svg, { G, Path } from "react-native-svg";
 import { getManualSubscriptions } from "../src/lib/manualSubscriptions";
+import {
+  getCurrencyMeta,
+  getPreferredCurrency,
+} from "../src/lib/currencyPreferences";
+import {
+  convertCurrencyAmount,
+  getUsdExchangeRates,
+} from "../src/lib/currencyConversion";
 
 const W = Dimensions.get("window").width - 32;
 
@@ -72,21 +80,28 @@ const DonutChart = ({ data }) => {
 
 export default function AnalyticsScreen({ navigation }) {
   const [manualSubscriptions, setManualSubscriptions] = useState([]);
+  const [preferredCurrency, setPreferredCurrency] = useState("USD");
+  const [usdRates, setUsdRates] = useState({ USD: 1, EUR: 0.92, GBP: 0.79 });
 
   useEffect(() => {
-    const loadManualSubscriptions = async () => {
-      const stored = await getManualSubscriptions();
+    const loadAnalyticsData = async () => {
+      const [stored, preferred, rates] = await Promise.all([
+        getManualSubscriptions(),
+        getPreferredCurrency(),
+        getUsdExchangeRates(),
+      ]);
       setManualSubscriptions(stored);
+      setPreferredCurrency(preferred);
+      setUsdRates(rates);
     };
 
-    loadManualSubscriptions();
-    const unsubscribe = navigation.addListener(
-      "focus",
-      loadManualSubscriptions,
-    );
+    loadAnalyticsData();
+    const unsubscribe = navigation.addListener("focus", loadAnalyticsData);
 
     return unsubscribe;
   }, [navigation]);
+
+  const preferredCurrencyMeta = getCurrencyMeta(preferredCurrency);
 
   const lineData = useMemo(() => {
     const monthsBack = 5;
@@ -114,7 +129,15 @@ export default function AnalyticsScreen({ navigation }) {
           return sum;
         }
 
-        return sum + Number(item.monthlyAmount || 0);
+        return (
+          sum +
+          convertCurrencyAmount(
+            Number(item.monthlyAmount || 0),
+            item.currency || "USD",
+            preferredCurrency,
+            usdRates,
+          )
+        );
       }, 0);
     });
 
@@ -122,7 +145,7 @@ export default function AnalyticsScreen({ navigation }) {
       labels,
       datasets: [{ data: dataset.map((value) => Number(value.toFixed(2))) }],
     };
-  }, [manualSubscriptions]);
+  }, [manualSubscriptions, preferredCurrency, usdRates]);
 
   const spendByFrequency = useMemo(() => {
     const base = {
@@ -135,7 +158,12 @@ export default function AnalyticsScreen({ navigation }) {
       const key = ["Weekly", "Monthly", "Yearly"].includes(item.frequency)
         ? item.frequency
         : "Monthly";
-      base[key] += Number(item.monthlyAmount || 0);
+      base[key] += convertCurrencyAmount(
+        Number(item.monthlyAmount || 0),
+        item.currency || "USD",
+        preferredCurrency,
+        usdRates,
+      );
     });
 
     return [
@@ -143,7 +171,7 @@ export default function AnalyticsScreen({ navigation }) {
       { label: "Monthly", value: base.Monthly, color: "#22C55E" },
       { label: "Yearly", value: base.Yearly, color: "#EC4899" },
     ];
-  }, [manualSubscriptions]);
+  }, [manualSubscriptions, preferredCurrency, usdRates]);
 
   return (
     <ScrollView
@@ -158,7 +186,7 @@ export default function AnalyticsScreen({ navigation }) {
           data={lineData}
           width={W - 16}
           height={180}
-          yAxisLabel={"$"}
+          yAxisLabel={`${preferredCurrencyMeta.code} `}
           chartConfig={{
             backgroundColor: "#fff",
             backgroundGradientFrom: "#fff",

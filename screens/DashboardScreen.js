@@ -1,6 +1,21 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, StyleSheet, ScrollView } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+} from "react-native";
 import { getManualSubscriptions } from "../src/lib/manualSubscriptions";
+import {
+  getCurrencyMeta,
+  getPreferredCurrency,
+} from "../src/lib/currencyPreferences";
+import {
+  convertCurrencyAmount,
+  getUsdExchangeRates,
+} from "../src/lib/currencyConversion";
+import { getPrivacySecuritySettings } from "../src/lib/appSettings";
 
 const StatCard = ({ label, value, sub, subColor, icon }) => (
   <View style={styles.statCard}>
@@ -21,21 +36,43 @@ const StatCard = ({ label, value, sub, subColor, icon }) => (
 
 export default function DashboardScreen({ navigation }) {
   const [manualSubscriptions, setManualSubscriptions] = useState([]);
+  const [preferredCurrency, setPreferredCurrency] = useState("USD");
+  const [usdRates, setUsdRates] = useState({ USD: 1, EUR: 0.92, GBP: 0.79 });
+  const [hideAmountsOnDashboard, setHideAmountsOnDashboard] = useState(false);
+  const [amountsRevealed, setAmountsRevealed] = useState(false);
 
   useEffect(() => {
-    const loadManualSubscriptions = async () => {
-      const stored = await getManualSubscriptions();
+    const loadDashboardData = async () => {
+      const [stored, preferred, rates, privacy] = await Promise.all([
+        getManualSubscriptions(),
+        getPreferredCurrency(),
+        getUsdExchangeRates(),
+        getPrivacySecuritySettings(),
+      ]);
       setManualSubscriptions(stored);
+      setPreferredCurrency(preferred);
+      setUsdRates(rates);
+      const shouldHide = Boolean(privacy?.hideAmountsOnDashboard);
+      setHideAmountsOnDashboard(shouldHide);
+      setAmountsRevealed(!shouldHide);
     };
 
-    loadManualSubscriptions();
-    const unsubscribe = navigation.addListener(
-      "focus",
-      loadManualSubscriptions,
-    );
+    loadDashboardData();
+    const unsubscribe = navigation.addListener("focus", loadDashboardData);
 
     return unsubscribe;
   }, [navigation]);
+
+  const preferredCurrencyMeta = getCurrencyMeta(preferredCurrency);
+  const currencyPrefix = `${preferredCurrencyMeta.code} `;
+  const shouldMaskAmounts = hideAmountsOnDashboard && !amountsRevealed;
+
+  const formatAmountForDashboard = (value) => {
+    if (shouldMaskAmounts) {
+      return `${currencyPrefix}••••`;
+    }
+    return `${currencyPrefix}${Number(value || 0).toFixed(2)}`;
+  };
 
   const now = new Date();
 
@@ -62,10 +99,17 @@ export default function DashboardScreen({ navigation }) {
   const monthlySpend = useMemo(
     () =>
       manualSubscriptions.reduce(
-        (sum, item) => sum + Number(item.monthlyAmount || 0),
+        (sum, item) =>
+          sum +
+          convertCurrencyAmount(
+            Number(item.monthlyAmount || 0),
+            item.currency || "USD",
+            preferredCurrency,
+            usdRates,
+          ),
         0,
       ),
-    [manualSubscriptions],
+    [manualSubscriptions, preferredCurrency, usdRates],
   );
 
   const yearlyProjection = monthlySpend * 12;
@@ -77,8 +121,18 @@ export default function DashboardScreen({ navigation }) {
 
     return subscriptionsWithDates
       .filter((item) => item.nextDate >= now && item.nextDate <= inSevenDays)
-      .reduce((sum, item) => sum + Number(item.amountValue || 0), 0);
-  }, [now, subscriptionsWithDates]);
+      .reduce(
+        (sum, item) =>
+          sum +
+          convertCurrencyAmount(
+            Number(item.amountValue || 0),
+            item.currency || "USD",
+            preferredCurrency,
+            usdRates,
+          ),
+        0,
+      );
+  }, [now, preferredCurrency, subscriptionsWithDates, usdRates]);
 
   const upcomingPayments = useMemo(() => {
     const inThirtyDays = new Date(now);
@@ -87,33 +141,64 @@ export default function DashboardScreen({ navigation }) {
     return subscriptionsWithDates
       .filter((item) => item.nextDate >= now && item.nextDate <= inThirtyDays)
       .slice(0, 8)
-      .map((item) => ({
-        name: item.name,
-        amount: `${item.currency || "USD"} ${Number(item.amountValue || 0).toFixed(2)}`,
-        date: item.nextDate.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-        }),
-        emoji: "🧾",
-      }));
-  }, [now, subscriptionsWithDates]);
+      .map((item) => {
+        const originalCurrency = item.currency || "USD";
+        const originalAmount = Number(item.amountValue || 0);
+        const convertedAmount = convertCurrencyAmount(
+          originalAmount,
+          originalCurrency,
+          preferredCurrency,
+          usdRates,
+        );
+
+        return {
+          name: item.name,
+          amount: `${preferredCurrencyMeta.code} ${convertedAmount.toFixed(2)}`,
+          originalCurrency,
+          originalAmount: `${originalCurrency} ${originalAmount.toFixed(2)}`,
+          date: item.nextDate.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+          }),
+          emoji: "🧾",
+        };
+      });
+  }, [
+    now,
+    preferredCurrency,
+    preferredCurrencyMeta.code,
+    subscriptionsWithDates,
+    usdRates,
+  ]);
 
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={{ paddingBottom: 30 }}
     >
-      <Text style={styles.pageTitle}>Dashboard</Text>
+      <View style={styles.titleRow}>
+        <Text style={styles.pageTitle}>Dashboard</Text>
+        {hideAmountsOnDashboard ? (
+          <TouchableOpacity
+            style={styles.revealButton}
+            onPress={() => setAmountsRevealed((prev) => !prev)}
+          >
+            <Text style={styles.revealButtonText}>
+              {amountsRevealed ? "Hide amounts" : "Show amounts"}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
 
       <StatCard
         label="Monthly Spend"
-        value={`$${monthlySpend.toFixed(2)}`}
+        value={formatAmountForDashboard(monthlySpend)}
         sub="From your added subscriptions"
         icon="💳"
       />
       <StatCard
         label="Yearly Projection"
-        value={`$${yearlyProjection.toFixed(2)}`}
+        value={formatAmountForDashboard(yearlyProjection)}
         sub="Based on monthly totals"
         icon="📈"
       />
@@ -125,7 +210,7 @@ export default function DashboardScreen({ navigation }) {
       />
       <StatCard
         label="Upcoming (7 Days)"
-        value={`$${upcomingSevenDaysAmount.toFixed(2)}`}
+        value={formatAmountForDashboard(upcomingSevenDaysAmount)}
         sub={
           upcomingSevenDaysAmount > 0
             ? "Due in the next 7 days"
@@ -156,7 +241,19 @@ export default function DashboardScreen({ navigation }) {
               <Text style={styles.paymentName}>{item.name}</Text>
               <Text style={styles.paymentDate}>{item.date}</Text>
             </View>
-            <Text style={styles.paymentAmount}>{item.amount}</Text>
+            <View style={{ alignItems: "flex-end" }}>
+              <Text style={styles.paymentAmount}>
+                {shouldMaskAmounts
+                  ? `${preferredCurrencyMeta.code} ••••`
+                  : item.amount}
+              </Text>
+              {!shouldMaskAmounts &&
+              item.originalCurrency !== preferredCurrencyMeta.code ? (
+                <Text style={styles.paymentOriginalCurrency}>
+                  Original: {item.originalAmount}
+                </Text>
+              ) : null}
+            </View>
           </View>
         ))
       )}
@@ -171,11 +268,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
   },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
   pageTitle: {
     fontSize: 26,
     fontWeight: "700",
     color: "#1a1a1a",
-    marginBottom: 16,
+  },
+  revealButton: {
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: "#fff",
+  },
+  revealButtonText: {
+    fontSize: 12,
+    color: "#5B3FD9",
+    fontWeight: "600",
   },
   statCard: {
     backgroundColor: "#fff",
@@ -232,4 +347,9 @@ const styles = StyleSheet.create({
   paymentName: { fontSize: 14, fontWeight: "600", color: "#1a1a1a" },
   paymentDate: { fontSize: 12, color: "#888", marginTop: 2 },
   paymentAmount: { fontSize: 15, fontWeight: "700", color: "#1a1a1a" },
+  paymentOriginalCurrency: {
+    fontSize: 11,
+    color: "#888",
+    marginTop: 2,
+  },
 });
