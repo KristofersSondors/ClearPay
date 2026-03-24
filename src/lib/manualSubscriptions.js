@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getSupabaseClient, hasSupabaseConfig } from "./supabase";
 import {
   parseNextPaymentDateInputToIso,
   sanitizeAmountInput,
@@ -6,7 +7,50 @@ import {
   sanitizeSubscriptionNameInput,
 } from "../utils/authSanitization";
 
-const MANUAL_SUBSCRIPTIONS_KEY = "clearpay_manual_subscriptions";
+const LEGACY_MANUAL_SUBSCRIPTIONS_KEY = "clearpay_manual_subscriptions";
+const MANUAL_SUBSCRIPTIONS_KEY_PREFIX = "clearpay_manual_subscriptions";
+
+function parseStoredSubscriptions(rawValue) {
+  try {
+    const parsed = rawValue ? JSON.parse(rawValue) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function getAuthenticatedUserId() {
+  if (!hasSupabaseConfig) {
+    return "";
+  }
+
+  try {
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      return "";
+    }
+
+    const { data, error } = await supabase.auth.getUser();
+    if (error) {
+      return "";
+    }
+
+    return data?.user?.id || "";
+  } catch {
+    return "";
+  }
+}
+
+function getSubscriptionsStorageKey(userId) {
+  return userId
+    ? `${MANUAL_SUBSCRIPTIONS_KEY_PREFIX}:${userId}`
+    : `${MANUAL_SUBSCRIPTIONS_KEY_PREFIX}:anonymous`;
+}
+
+async function getResolvedSubscriptionsStorageKey() {
+  const userId = await getAuthenticatedUserId();
+  return getSubscriptionsStorageKey(userId);
+}
 
 function toNumber(value) {
   const parsed = Number.parseFloat(String(value).replace(/[^\d.]/g, ""));
@@ -33,9 +77,9 @@ function getNextPaymentDate(frequency) {
   if (frequency === "Weekly") {
     date.setDate(date.getDate() + 7);
   } else if (frequency === "Yearly") {
-    date.setFullYear(date.getFullYear() + 1);
+    date.setDate(date.getDate() + 365);
   } else {
-    date.setMonth(date.getMonth() + 1);
+    date.setDate(date.getDate() + 30);
   }
 
   return date.toISOString();
@@ -43,9 +87,37 @@ function getNextPaymentDate(frequency) {
 
 export async function getManualSubscriptions() {
   try {
-    const raw = await AsyncStorage.getItem(MANUAL_SUBSCRIPTIONS_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
+    const storageKey = await getResolvedSubscriptionsStorageKey();
+    const scopedRaw = await AsyncStorage.getItem(storageKey);
+    const scopedSubscriptions = parseStoredSubscriptions(scopedRaw);
+
+    if (scopedSubscriptions.length > 0) {
+      return scopedSubscriptions;
+    }
+
+    const legacyRaw = await AsyncStorage.getItem(
+      LEGACY_MANUAL_SUBSCRIPTIONS_KEY,
+    );
+    const legacySubscriptions = parseStoredSubscriptions(legacyRaw);
+
+    // One-time migration of old shared data to the first authenticated account.
+    if (
+      legacySubscriptions.length > 0 &&
+      storageKey !== getSubscriptionsStorageKey("")
+    ) {
+      await AsyncStorage.setItem(
+        storageKey,
+        JSON.stringify(legacySubscriptions),
+      );
+      await AsyncStorage.removeItem(LEGACY_MANUAL_SUBSCRIPTIONS_KEY);
+      return legacySubscriptions;
+    }
+
+    if (storageKey === getSubscriptionsStorageKey("")) {
+      return legacySubscriptions;
+    }
+
+    return [];
   } catch {
     return [];
   }
@@ -78,7 +150,8 @@ export async function addManualSubscription({
 
   const existing = await getManualSubscriptions();
   const updated = [next, ...existing];
-  await AsyncStorage.setItem(MANUAL_SUBSCRIPTIONS_KEY, JSON.stringify(updated));
+  const storageKey = await getResolvedSubscriptionsStorageKey();
+  await AsyncStorage.setItem(storageKey, JSON.stringify(updated));
 
   return next;
 }
@@ -122,9 +195,20 @@ export async function updateManualSubscription(id, updates = {}) {
     item.id === id ? updatedItem : item,
   );
 
-  await AsyncStorage.setItem(
-    MANUAL_SUBSCRIPTIONS_KEY,
-    JSON.stringify(updatedList),
-  );
+  const storageKey = await getResolvedSubscriptionsStorageKey();
+  await AsyncStorage.setItem(storageKey, JSON.stringify(updatedList));
   return updatedItem;
+}
+
+export async function removeManualSubscription(id) {
+  const existing = await getManualSubscriptions();
+  const updatedList = existing.filter((item) => item.id !== id);
+
+  if (updatedList.length === existing.length) {
+    return false;
+  }
+
+  const storageKey = await getResolvedSubscriptionsStorageKey();
+  await AsyncStorage.setItem(storageKey, JSON.stringify(updatedList));
+  return true;
 }

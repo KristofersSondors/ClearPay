@@ -12,7 +12,10 @@ import {
   TextInput,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { updateManualSubscription } from "../src/lib/manualSubscriptions";
+import {
+  removeManualSubscription,
+  updateManualSubscription,
+} from "../src/lib/manualSubscriptions";
 import {
   sanitizeAmountInput,
   sanitizeFrequencyInput,
@@ -74,6 +77,20 @@ function formatDateToInput(date) {
   return `${year}-${month}-${day}`;
 }
 
+function getSuggestedNextPaymentDateInput(frequency) {
+  const nextDate = new Date();
+
+  if (frequency === "Weekly") {
+    nextDate.setDate(nextDate.getDate() + 7);
+  } else if (frequency === "Yearly") {
+    nextDate.setDate(nextDate.getDate() + 365);
+  } else {
+    nextDate.setDate(nextDate.getDate() + 30);
+  }
+
+  return formatDateToInput(nextDate);
+}
+
 function shiftMonth(date, amount) {
   const shifted = new Date(date.getFullYear(), date.getMonth() + amount, 1);
   return shifted;
@@ -108,24 +125,22 @@ function getCalendarCells(monthDate) {
 
 export default function SubscriptionDetailScreen({ route, navigation }) {
   const { sub } = route.params;
+  const initialFrequency = sanitizeFrequencyInput(sub.freq || "Monthly");
+  const initialNextPaymentDate =
+    isoToDateInput(sub.nextPaymentIso) ||
+    sanitizeNextPaymentDateInput(sub.nextPaymentDate || "");
   const [notify, setNotify] = useState(true);
   const [daysBefore, setDaysBefore] = useState("3 days");
   const [amount, setAmount] = useState(
     sanitizeAmountInput(String(sub.amount || "")),
   );
-  const [frequency, setFrequency] = useState(
-    sanitizeFrequencyInput(sub.freq || "Monthly"),
-  );
+  const [frequency, setFrequency] = useState(initialFrequency);
   const [nextPaymentDate, setNextPaymentDate] = useState(
-    isoToDateInput(sub.nextPaymentIso) ||
-      sanitizeNextPaymentDateInput(sub.nextPaymentDate || ""),
+    initialNextPaymentDate,
   );
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(
-    parseDateInputToDate(
-      isoToDateInput(sub.nextPaymentIso) ||
-        sanitizeNextPaymentDateInput(sub.nextPaymentDate || ""),
-    ),
+    parseDateInputToDate(initialNextPaymentDate),
   );
   const [freqOpen, setFreqOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -137,7 +152,13 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
   const handleSave = async () => {
     const cleanAmount = sanitizeAmountInput(amount);
     const cleanFrequency = sanitizeFrequencyInput(frequency);
-    const cleanDate = sanitizeNextPaymentDateInput(nextPaymentDate);
+    const cleanDateInput = sanitizeNextPaymentDateInput(nextPaymentDate);
+    const frequencyChanged = cleanFrequency !== initialFrequency;
+    const dateWasUnchanged = cleanDateInput === initialNextPaymentDate;
+    const cleanDate =
+      frequencyChanged && dateWasUnchanged
+        ? getSuggestedNextPaymentDateInput(cleanFrequency)
+        : cleanDateInput;
 
     setAmount(cleanAmount);
     setFrequency(cleanFrequency);
@@ -169,6 +190,34 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleCancelSubscription = () => {
+    Alert.alert(
+      "Cancel subscription",
+      `Remove ${sub.name} from your subscriptions?`,
+      [
+        { text: "Keep", style: "cancel" },
+        {
+          text: "Cancel subscription",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setSaving(true);
+              await removeManualSubscription(sub.id);
+              navigation.replace("CancellationSuccess");
+            } catch {
+              Alert.alert(
+                "Cancellation failed",
+                "Unable to remove this subscription right now.",
+              );
+            } finally {
+              setSaving(false);
+            }
+          },
+        },
+      ],
+    );
   };
 
   const openDatePicker = () => {
@@ -284,10 +333,13 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.cancelBtn}
-          onPress={() => navigation.navigate("CancellationSuccess")}
+          style={[styles.cancelBtn, saving && styles.saveBtnDisabled]}
+          onPress={handleCancelSubscription}
+          disabled={saving}
         >
-          <Text style={styles.cancelBtnText}>⊖ Cancel subscription</Text>
+          <Text style={styles.cancelBtnText}>
+            {saving ? "Canceling..." : "⊖ Cancel subscription"}
+          </Text>
         </TouchableOpacity>
 
         <View style={styles.notifyRow}>
