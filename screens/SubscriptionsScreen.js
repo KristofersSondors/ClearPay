@@ -9,18 +9,64 @@ import {
   Modal,
 } from "react-native";
 import { getManualSubscriptions } from "../src/lib/manualSubscriptions";
+import {
+  getDetectedBankSubscriptions,
+  getLinkedBanks,
+} from "../src/lib/bankingApi";
+import { getSupabaseClient, hasSupabaseConfig } from "../src/lib/supabase";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { mergeSubscriptions } from "../src/lib/transactionMetrics";
+
+const LOCAL_BANKING_USER_ID_KEY = "clearpay_local_banking_user_id";
 
 export default function SubscriptionsScreen({ navigation }) {
   const [search, setSearch] = useState("");
   const [subscriptions, setSubscriptions] = useState([]);
+  const [bankSubscriptions, setBankSubscriptions] = useState([]);
   const [selectedName, setSelectedName] = useState("");
   const [isNameFilterOpen, setIsNameFilterOpen] = useState(false);
   const [nameFilterSearch, setNameFilterSearch] = useState("");
+
+  const resolveUserId = async () => {
+    if (hasSupabaseConfig) {
+      const supabase = getSupabaseClient();
+      const { data } = await supabase.auth.getUser();
+      if (data?.user?.id) {
+        return data.user.id;
+      }
+    }
+
+    return await AsyncStorage.getItem(LOCAL_BANKING_USER_ID_KEY);
+  };
 
   useEffect(() => {
     const loadSubscriptions = async () => {
       const stored = await getManualSubscriptions();
       setSubscriptions(stored);
+
+      // Load bank-detected subscriptions
+      try {
+        const userId = await resolveUserId();
+        if (userId) {
+          const linked = await getLinkedBanks(userId);
+          const linkedBankIds = Array.isArray(linked?.linkedBankIds)
+            ? linked.linkedBankIds
+            : [];
+
+          if (linkedBankIds.length > 0) {
+            const bankSubs = await getDetectedBankSubscriptions(userId);
+            setBankSubscriptions(
+              Array.isArray(bankSubs?.subscriptions)
+                ? bankSubs.subscriptions
+                : [],
+            );
+          } else {
+            setBankSubscriptions([]);
+          }
+        }
+      } catch {
+        setBankSubscriptions([]);
+      }
     };
 
     loadSubscriptions();
@@ -30,7 +76,10 @@ export default function SubscriptionsScreen({ navigation }) {
   }, [navigation]);
 
   const normalizedSubscriptions = useMemo(() => {
-    return subscriptions.map((item) => {
+    // Merge manual and bank subscriptions
+    const allSubs = mergeSubscriptions(subscriptions, bankSubscriptions);
+
+    return allSubs.map((item) => {
       const nextDate = item.nextPaymentIso
         ? new Date(item.nextPaymentIso)
         : null;
@@ -46,17 +95,18 @@ export default function SubscriptionsScreen({ navigation }) {
       return {
         id: item.id,
         name: item.name,
-        category: "Manual",
+        category: item.source === "bank" ? "Bank Detected" : "Manual",
         amount: Number(item.amountValue || 0).toFixed(2),
         currency: item.currency || "USD",
         freq: item.frequency || "Monthly",
         nextPaymentIso: item.nextPaymentIso || "",
-        emoji: "🧾",
-        color: "#5B3FD9",
+        emoji: item.source === "bank" ? "🏦" : "🧾",
+        color: item.source === "bank" ? "#1E40AF" : "#5B3FD9",
         nextPaymentDate,
+        source: item.source,
       };
     });
-  }, [subscriptions]);
+  }, [subscriptions, bankSubscriptions]);
 
   const subscriptionNames = useMemo(() => {
     const names = [];

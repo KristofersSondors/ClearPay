@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getManualSubscriptions } from "../src/lib/manualSubscriptions";
 import {
   getCurrencyMeta,
@@ -16,6 +17,19 @@ import {
   getUsdExchangeRates,
 } from "../src/lib/currencyConversion";
 import { getPrivacySecuritySettings } from "../src/lib/appSettings";
+import {
+  getLinkedBanks,
+  getDetectedBankSubscriptions,
+} from "../src/lib/bankingApi";
+import { getSupabaseClient, hasSupabaseConfig } from "../src/lib/supabase";
+import {
+  mergeSubscriptions,
+  calculateMonthlySpend,
+  calculateUpcomingPayments,
+  calculateUpcomingAmount,
+} from "../src/lib/transactionMetrics";
+
+const LOCAL_BANKING_USER_ID_KEY = "clearpay_local_banking_user_id";
 
 const StatCard = ({ label, value, sub, subColor, icon }) => (
   <View style={styles.statCard}>
@@ -36,10 +50,37 @@ const StatCard = ({ label, value, sub, subColor, icon }) => (
 
 export default function DashboardScreen({ navigation }) {
   const [manualSubscriptions, setManualSubscriptions] = useState([]);
+  const [bankSubscriptions, setBankSubscriptions] = useState([]);
   const [preferredCurrency, setPreferredCurrency] = useState("USD");
   const [usdRates, setUsdRates] = useState({ USD: 1, EUR: 0.92, GBP: 0.79 });
   const [hideAmountsOnDashboard, setHideAmountsOnDashboard] = useState(false);
   const [amountsRevealed, setAmountsRevealed] = useState(false);
+  const [showBankPrompt, setShowBankPrompt] = useState(false);
+
+  const resolveAuthContext = async () => {
+    if (hasSupabaseConfig) {
+      const supabase = getSupabaseClient();
+      const { data, error } = await supabase.auth.getUser();
+      if (!error && data?.user?.id) {
+        const provider = String(
+          data.user?.app_metadata?.provider ||
+            data.user?.identities?.[0]?.provider ||
+            "",
+        ).toLowerCase();
+
+        return {
+          userId: data.user.id,
+          provider,
+        };
+      }
+    }
+
+    const localUserId = await AsyncStorage.getItem(LOCAL_BANKING_USER_ID_KEY);
+    return {
+      userId: localUserId || "",
+      provider: "",
+    };
+  };
 
   useEffect(() => {
     const loadDashboardData = async () => {
@@ -55,6 +96,40 @@ export default function DashboardScreen({ navigation }) {
       const shouldHide = Boolean(privacy?.hideAmountsOnDashboard);
       setHideAmountsOnDashboard(shouldHide);
       setAmountsRevealed(!shouldHide);
+
+      try {
+        const { userId, provider } = await resolveAuthContext();
+        if (!userId) {
+          setShowBankPrompt(false);
+          setBankSubscriptions([]);
+          return;
+        }
+
+        const linked = await getLinkedBanks(userId);
+        const linkedBankIds = Array.isArray(linked?.linkedBankIds)
+          ? linked.linkedBankIds
+          : [];
+        setShowBankPrompt(provider === "google" && linkedBankIds.length === 0);
+
+        // Fetch bank-detected subscriptions
+        if (linkedBankIds.length > 0) {
+          try {
+            const bankSubs = await getDetectedBankSubscriptions(userId);
+            setBankSubscriptions(
+              Array.isArray(bankSubs?.subscriptions)
+                ? bankSubs.subscriptions
+                : [],
+            );
+          } catch {
+            setBankSubscriptions([]);
+          }
+        } else {
+          setBankSubscriptions([]);
+        }
+      } catch {
+        setShowBankPrompt(false);
+        setBankSubscriptions([]);
+      }
     };
 
     loadDashboardData();
@@ -76,8 +151,13 @@ export default function DashboardScreen({ navigation }) {
 
   const now = new Date();
 
+  // Merge manual and bank subscriptions
+  const allSubscriptions = useMemo(() => {
+    return mergeSubscriptions(manualSubscriptions, bankSubscriptions);
+  }, [manualSubscriptions, bankSubscriptions]);
+
   const subscriptionsWithDates = useMemo(() => {
-    return manualSubscriptions
+    return allSubscriptions
       .map((item) => {
         const nextDate = item.nextPaymentIso
           ? new Date(item.nextPaymentIso)
@@ -94,80 +174,44 @@ export default function DashboardScreen({ navigation }) {
       })
       .filter(Boolean)
       .sort((a, b) => a.nextDate - b.nextDate);
-  }, [manualSubscriptions]);
+  }, [allSubscriptions]);
 
   const monthlySpend = useMemo(
-    () =>
-      manualSubscriptions.reduce(
-        (sum, item) =>
-          sum +
-          convertCurrencyAmount(
-            Number(item.monthlyAmount || 0),
-            item.currency || "USD",
-            preferredCurrency,
-            usdRates,
-          ),
-        0,
-      ),
-    [manualSubscriptions, preferredCurrency, usdRates],
+    () => calculateMonthlySpend(allSubscriptions, usdRates, preferredCurrency),
+    [allSubscriptions, preferredCurrency, usdRates],
   );
 
   const yearlyProjection = monthlySpend * 12;
-  const activeSubscriptions = manualSubscriptions.length;
+  const activeSubscriptions = allSubscriptions.length;
 
-  const upcomingSevenDaysAmount = useMemo(() => {
-    const inSevenDays = new Date(now);
-    inSevenDays.setDate(inSevenDays.getDate() + 7);
-
-    return subscriptionsWithDates
-      .filter((item) => item.nextDate >= now && item.nextDate <= inSevenDays)
-      .reduce(
-        (sum, item) =>
-          sum +
-          convertCurrencyAmount(
-            Number(item.amountValue || 0),
-            item.currency || "USD",
-            preferredCurrency,
-            usdRates,
-          ),
-        0,
-      );
-  }, [now, preferredCurrency, subscriptionsWithDates, usdRates]);
+  const upcomingSevenDaysAmount = useMemo(
+    () =>
+      calculateUpcomingAmount(allSubscriptions, 7, usdRates, preferredCurrency),
+    [allSubscriptions, preferredCurrency, usdRates],
+  );
 
   const upcomingPayments = useMemo(() => {
-    const inThirtyDays = new Date(now);
-    inThirtyDays.setDate(inThirtyDays.getDate() + 30);
+    return calculateUpcomingPayments(allSubscriptions, 30).map((item) => {
+      const convertedAmount = convertCurrencyAmount(
+        item.amount,
+        item.currency,
+        preferredCurrency,
+        usdRates,
+      );
 
-    return subscriptionsWithDates
-      .filter((item) => item.nextDate >= now && item.nextDate <= inThirtyDays)
-      .slice(0, 8)
-      .map((item) => {
-        const originalCurrency = item.currency || "USD";
-        const originalAmount = Number(item.amountValue || 0);
-        const convertedAmount = convertCurrencyAmount(
-          originalAmount,
-          originalCurrency,
-          preferredCurrency,
-          usdRates,
-        );
-
-        return {
-          name: item.name,
-          amount: `${preferredCurrencyMeta.code} ${convertedAmount.toFixed(2)}`,
-          originalCurrency,
-          originalAmount: `${originalCurrency} ${originalAmount.toFixed(2)}`,
-          date: item.nextDate.toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-          }),
-          emoji: "🧾",
-        };
-      });
+      return {
+        name: item.name,
+        amount: `${preferredCurrencyMeta.code} ${convertedAmount.toFixed(2)}`,
+        originalCurrency: item.currency,
+        originalAmount: `${item.currency} ${item.amount.toFixed(2)}`,
+        date: item.date,
+        emoji: item.emoji,
+      };
+    });
   }, [
-    now,
+    allSubscriptions,
     preferredCurrency,
     preferredCurrencyMeta.code,
-    subscriptionsWithDates,
     usdRates,
   ]);
 
@@ -189,6 +233,22 @@ export default function DashboardScreen({ navigation }) {
           </TouchableOpacity>
         ) : null}
       </View>
+
+      {showBankPrompt ? (
+        <View style={styles.bankPromptCard}>
+          <Text style={styles.bankPromptTitle}>Connect Your Bank</Text>
+          <Text style={styles.bankPromptBody}>
+            You signed in with Google. Connect your bank account to
+            automatically detect subscriptions and recurring payments.
+          </Text>
+          <TouchableOpacity
+            style={styles.bankPromptButton}
+            onPress={() => navigation.navigate("Settings")}
+          >
+            <Text style={styles.bankPromptButtonText}>Go to Settings</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Upcoming Payments</Text>
@@ -239,7 +299,11 @@ export default function DashboardScreen({ navigation }) {
       <StatCard
         label="Monthly Spend"
         value={formatAmountForDashboard(monthlySpend)}
-        sub="From your added subscriptions"
+        sub={
+          bankSubscriptions.length > 0
+            ? `From ${manualSubscriptions.length} manual + ${bankSubscriptions.length} bank`
+            : "From your added subscriptions"
+        }
         icon="💳"
       />
       <StatCard
@@ -251,7 +315,11 @@ export default function DashboardScreen({ navigation }) {
       <StatCard
         label="Active Subscriptions"
         value={`${activeSubscriptions}`}
-        sub="Manually added"
+        sub={
+          bankSubscriptions.length > 0
+            ? `${manualSubscriptions.length} manual + ${bankSubscriptions.length} detected`
+            : "Manually added"
+        }
         icon="📅"
       />
       <StatCard
@@ -297,6 +365,38 @@ const styles = StyleSheet.create({
   revealButtonText: {
     fontSize: 12,
     color: "#5B3FD9",
+    fontWeight: "600",
+  },
+  bankPromptCard: {
+    backgroundColor: "#EEF3FF",
+    borderColor: "#C7D7FF",
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 14,
+  },
+  bankPromptTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#1E3A8A",
+    marginBottom: 4,
+  },
+  bankPromptBody: {
+    fontSize: 12,
+    color: "#334155",
+    lineHeight: 18,
+    marginBottom: 10,
+  },
+  bankPromptButton: {
+    alignSelf: "flex-start",
+    backgroundColor: "#1E40AF",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  bankPromptButtonText: {
+    color: "#fff",
+    fontSize: 12,
     fontWeight: "600",
   },
   statCard: {

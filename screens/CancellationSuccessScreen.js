@@ -1,3 +1,5 @@
+// TODO: REDIRECION TO SUBSCRIPTION PROVIDER'S CANCELLATION PAGE IF POSSIBLE
+
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
