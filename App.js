@@ -86,8 +86,15 @@ function MainTabs({ navigation }) {
           tabBarStyle: {
             backgroundColor: "#fff",
             borderTopColor: "#F0F0F0",
-            height: 60,
-            paddingBottom: 8,
+            height: 72,
+            paddingTop: 6,
+            paddingBottom: 10,
+          },
+          tabBarItemStyle: {
+            paddingVertical: 2,
+          },
+          tabBarIconStyle: {
+            marginTop: 2,
           },
           tabBarLabel: ({ focused, color }) => (
             <Text
@@ -108,10 +115,15 @@ function MainTabs({ navigation }) {
                   backgroundColor: focused ? "#EEE9FF" : "transparent",
                   borderRadius: 8,
                   paddingHorizontal: 12,
-                  paddingVertical: 4,
+                  paddingVertical: 6,
+                  minHeight: 30,
+                  justifyContent: "center",
+                  alignItems: "center",
                 }}
               >
-                <Text style={{ fontSize: 18, color }}>{icons[route.name]}</Text>
+                <Text style={{ fontSize: 18, lineHeight: 20, color }}>
+                  {icons[route.name]}
+                </Text>
               </View>
             );
           },
