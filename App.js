@@ -71,7 +71,7 @@ function AppHeader({ navigation, showActions = true }) {
             <Text style={{ color: "#fff", fontSize: 22 }}>+</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => navigation.navigate("Settings")}>
-            <Text style={{ color: "#fff", fontSize: 20 }}>⚙</Text>
+            <Ionicons name="settings-outline" size={22} color="#fff" />
           </TouchableOpacity>
         </View>
       )}
