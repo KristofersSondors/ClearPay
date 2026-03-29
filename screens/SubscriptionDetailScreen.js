@@ -16,6 +16,7 @@ import {
   removeManualSubscription,
   updateManualSubscription,
 } from "../src/lib/manualSubscriptions";
+import { getSupabaseClient } from "../src/lib/supabase";
 import {
   sanitizeAmountInput,
   sanitizeFrequencyInput,
@@ -125,14 +126,25 @@ function getCalendarCells(monthDate) {
 
 export default function SubscriptionDetailScreen({ route, navigation }) {
   const { sub } = route.params;
-  const initialFrequency = sanitizeFrequencyInput(sub.freq || "Monthly");
+  const initialFrequency = sanitizeFrequencyInput(
+    sub.freq || sub.frequency || "Monthly",
+  );
   const initialNextPaymentDate =
-    isoToDateInput(sub.nextPaymentIso) ||
+    isoToDateInput(sub.nextPaymentIso || sub.nextPaymentIso) ||
     sanitizeNextPaymentDateInput(sub.nextPaymentDate || "");
   const [notify, setNotify] = useState(true);
   const [daysBefore, setDaysBefore] = useState("3 days");
+  // Always use the original user-entered amount for editing
   const [amount, setAmount] = useState(
-    sanitizeAmountInput(String(sub.amount || "")),
+    sanitizeAmountInput(
+      String(
+        sub.amount !== undefined
+          ? sub.amount
+          : sub.amountValue !== undefined
+            ? sub.amountValue
+            : "",
+      ),
+    ),
   );
   const [frequency, setFrequency] = useState(initialFrequency);
   const [nextPaymentDate, setNextPaymentDate] = useState(
@@ -144,6 +156,19 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
   );
   const [freqOpen, setFreqOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Compute the normalized monthly projection for display
+  function computeMonthlyAmount(amount, frequency) {
+    const safeAmount = Number(String(amount).replace(/[^\d.]/g, ""));
+    if (frequency === "Weekly") {
+      return (safeAmount * 52) / 12;
+    }
+    if (frequency === "Yearly") {
+      return safeAmount / 12;
+    }
+    return safeAmount;
+  }
+  const monthlyProjection = computeMonthlyAmount(amount, frequency);
 
   const amountLabel = `${sub.currency || "USD"} ${amount || "0.00"}`;
 
@@ -178,11 +203,40 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
 
     try {
       setSaving(true);
-      await updateManualSubscription(sub.id, {
-        amount: cleanAmount,
-        frequency: cleanFrequency,
-        nextPaymentDate: cleanDate,
-      });
+      if (sub.source === "manual") {
+        await updateManualSubscription(sub.id, {
+          amount: cleanAmount,
+          frequency: cleanFrequency,
+          nextPaymentDate: cleanDate,
+        });
+      } else {
+        // Detected subscription: persist edit via backend
+        const supabase = getSupabaseClient();
+        const { data: userData, error: userError } =
+          await supabase.auth.getUser();
+        if (userError || !userData?.user?.id) {
+          throw new Error("Not authenticated");
+        }
+        const userId = userData.user.id;
+        const response = await fetch(
+          `${process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:4000"}/api/banking/subscriptions-detected/${encodeURIComponent(sub.id)}`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userId,
+              name: sub.name,
+              amount: cleanAmount,
+              currency: sub.currency,
+              frequency: cleanFrequency,
+              nextPaymentIso: cleanDate,
+            }),
+          },
+        );
+        if (!response.ok) {
+          throw new Error("Failed to update subscription");
+        }
+      }
       Alert.alert("Saved", "Subscription updated successfully.");
       navigation.goBack();
     } catch {
@@ -283,6 +337,22 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
                 keyboardType="decimal-pad"
               />
             </View>
+          </View>
+          {/* Show the normalized monthly projection below the input */}
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "flex-end",
+              marginBottom: 4,
+            }}
+          >
+            <Text style={{ fontSize: 12, color: "#888" }}>
+              Monthly projection:{" "}
+              {Number.isFinite(monthlyProjection)
+                ? monthlyProjection.toFixed(2)
+                : "0.00"}{" "}
+              {sub.currency || "USD"}
+            </Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.infoRow}>

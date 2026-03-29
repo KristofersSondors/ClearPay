@@ -27,6 +27,7 @@ import {
   getBankProviders,
   getLinkedBanks,
   startBankLink,
+  removeLinkedBank,
 } from "../src/lib/bankingApi";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -144,6 +145,35 @@ export default function SettingsScreen({ navigation }) {
       Alert.alert("Bank linking failed", error?.message || "Please try again.");
     } finally {
       setLinkingBankId("");
+    }
+  };
+
+  const handleBankDisconnect = async (bank) => {
+    if (!currentUserId || !connected.includes(bank.id)) {
+      return;
+    }
+
+    try {
+      await removeLinkedBank(currentUserId, bank.id);
+      setConnected(connected.filter((bankId) => bankId !== bank.id));
+    } catch (error) {
+      Alert.alert(
+        "Bank unlinking failed",
+        error?.message || "Please try again.",
+      );
+    }
+  };
+
+  const handleRemoveBank = async (bankId) => {
+    try {
+      await removeLinkedBank(currentUserId, bankId);
+      await loadLinkedBanks(currentUserId);
+      Alert.alert("Bank removed", "The bank has been unlinked.");
+    } catch (error) {
+      Alert.alert(
+        "Failed to remove bank",
+        error.message || "Please try again.",
+      );
     }
   };
 
@@ -368,10 +398,39 @@ export default function SettingsScreen({ navigation }) {
                             )}
                           </View>
                           {isConnected ? (
-                            <View style={styles.connectedBadge}>
-                              <Text style={styles.connectedText}>
-                                ✓ Connected
-                              </Text>
+                            <View
+                              style={{
+                                flexDirection: "row",
+                                alignItems: "center",
+                              }}
+                            >
+                              <View style={styles.connectedBadge}>
+                                <Text style={styles.connectedText}>
+                                  ✓ Connected
+                                </Text>
+                              </View>
+                              <TouchableOpacity
+                                style={styles.removeBankBtn}
+                                onPress={() =>
+                                  Alert.alert(
+                                    "Remove Bank",
+                                    "Are you sure you want to unlink this bank?",
+                                    [
+                                      { text: "Cancel", style: "cancel" },
+                                      {
+                                        text: "Remove",
+                                        style: "destructive",
+                                        onPress: () =>
+                                          handleRemoveBank(bank.id),
+                                      },
+                                    ],
+                                  )
+                                }
+                              >
+                                <Text style={styles.removeBankText}>
+                                  Remove
+                                </Text>
+                              </TouchableOpacity>
                             </View>
                           ) : (
                             <Text style={styles.connectText}>
@@ -385,7 +444,7 @@ export default function SettingsScreen({ navigation }) {
                 ))
               )}
 
-              {/* Add New Bank Button */}
+              {/* Add Bank Button: show "+ Add Bank" if none connected, else "+ Add Another Bank" */}
               <TouchableOpacity
                 style={styles.addBankBtn}
                 onPress={() => {
@@ -393,7 +452,9 @@ export default function SettingsScreen({ navigation }) {
                   setSearchQuery("");
                 }}
               >
-                <Text style={styles.addBankBtnText}>+ Add Another Bank</Text>
+                <Text style={styles.addBankBtnText}>
+                  {connected.length === 0 ? "+ Add Bank" : "+ Add Another Bank"}
+                </Text>
               </TouchableOpacity>
             </>
           ) : (
@@ -480,10 +541,36 @@ export default function SettingsScreen({ navigation }) {
                           )}
                         </View>
                         {isConnected ? (
-                          <View style={styles.connectedBadge}>
-                            <Text style={styles.connectedText}>
-                              ✓ Connected
-                            </Text>
+                          <View
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                            }}
+                          >
+                            <View style={styles.connectedBadge}>
+                              <Text style={styles.connectedText}>
+                                ✓ Connected
+                              </Text>
+                            </View>
+                            <TouchableOpacity
+                              style={styles.removeBankBtn}
+                              onPress={() =>
+                                Alert.alert(
+                                  "Remove Bank",
+                                  "Are you sure you want to unlink this bank?",
+                                  [
+                                    { text: "Cancel", style: "cancel" },
+                                    {
+                                      text: "Remove",
+                                      style: "destructive",
+                                      onPress: () => handleRemoveBank(bank.id),
+                                    },
+                                  ],
+                                )
+                              }
+                            >
+                              <Text style={styles.removeBankText}>Remove</Text>
+                            </TouchableOpacity>
                           </View>
                         ) : (
                           <Text style={styles.connectText}>
@@ -733,5 +820,17 @@ const styles = StyleSheet.create({
     color: "#5B3FD9",
     fontSize: 14,
     fontWeight: "500",
+  },
+  removeBankBtn: {
+    marginLeft: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    backgroundColor: "#FEE2E2",
+    borderRadius: 6,
+  },
+  removeBankText: {
+    color: "#DC2626",
+    fontWeight: "600",
+    fontSize: 13,
   },
 });

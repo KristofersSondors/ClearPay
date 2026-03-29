@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 import {
   View,
   Text,
@@ -16,6 +17,7 @@ import {
 import { getSupabaseClient, hasSupabaseConfig } from "../src/lib/supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { mergeSubscriptions } from "../src/lib/transactionMetrics";
+import { computeMonthlyAmount } from "../src/lib/manualSubscriptions";
 
 const LOCAL_BANKING_USER_ID_KEY = "clearpay_local_banking_user_id";
 
@@ -39,41 +41,40 @@ export default function SubscriptionsScreen({ navigation }) {
     return await AsyncStorage.getItem(LOCAL_BANKING_USER_ID_KEY);
   };
 
-  useEffect(() => {
-    const loadSubscriptions = async () => {
-      const stored = await getManualSubscriptions();
-      setSubscriptions(stored);
+  const loadSubscriptions = useCallback(async () => {
+    const stored = await getManualSubscriptions();
+    setSubscriptions(stored);
 
-      // Load bank-detected subscriptions
-      try {
-        const userId = await resolveUserId();
-        if (userId) {
-          const linked = await getLinkedBanks(userId);
-          const linkedBankIds = Array.isArray(linked?.linkedBankIds)
-            ? linked.linkedBankIds
-            : [];
+    // Load bank-detected subscriptions
+    try {
+      const userId = await resolveUserId();
+      if (userId) {
+        const linked = await getLinkedBanks(userId);
+        const linkedBankIds = Array.isArray(linked?.linkedBankIds)
+          ? linked.linkedBankIds
+          : [];
 
-          if (linkedBankIds.length > 0) {
-            const bankSubs = await getDetectedBankSubscriptions(userId);
-            setBankSubscriptions(
-              Array.isArray(bankSubs?.subscriptions)
-                ? bankSubs.subscriptions
-                : [],
-            );
-          } else {
-            setBankSubscriptions([]);
-          }
+        if (linkedBankIds.length > 0) {
+          const bankSubs = await getDetectedBankSubscriptions(userId);
+          setBankSubscriptions(
+            Array.isArray(bankSubs?.subscriptions)
+              ? bankSubs.subscriptions
+              : [],
+          );
+        } else {
+          setBankSubscriptions([]);
         }
-      } catch {
-        setBankSubscriptions([]);
       }
-    };
-
-    loadSubscriptions();
-    const unsubscribe = navigation.addListener("focus", loadSubscriptions);
-
-    return unsubscribe;
+    } catch {
+      setBankSubscriptions([]);
+    }
   }, [navigation]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadSubscriptions();
+    }, [loadSubscriptions]),
+  );
 
   const normalizedSubscriptions = useMemo(() => {
     // Merge manual and bank subscriptions
@@ -92,13 +93,27 @@ export default function SubscriptionsScreen({ navigation }) {
             })
           : "N/A";
 
+      // Manual: show original amount and frequency; Detected: use selected frequency for projection
+      let displayAmount, displayFreq;
+      if (item.source === "manual" || item.source === "bank") {
+        // Prefer amountValue, fallback to amount for both manual and bank-detected subs
+        const origAmount =
+          item.amountValue !== undefined ? item.amountValue : item.amount;
+        displayAmount = Number(origAmount).toFixed(2);
+        displayFreq = item.frequency || "Monthly";
+      } else {
+        // Fallback for any other types (if any)
+        displayAmount = "0.00";
+        displayFreq = item.frequency || "Monthly";
+      }
+
       return {
         id: item.id,
         name: item.name,
         category: item.source === "bank" ? "Bank Detected" : "Manual",
-        amount: Number(item.amountValue || 0).toFixed(2),
+        amount: displayAmount,
         currency: item.currency || "USD",
-        freq: item.frequency || "Monthly",
+        freq: displayFreq,
         nextPaymentIso: item.nextPaymentIso || "",
         emoji: item.source === "bank" ? "🏦" : "🧾",
         color: item.source === "bank" ? "#1E40AF" : "#5B3FD9",

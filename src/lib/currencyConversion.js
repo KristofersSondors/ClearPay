@@ -8,14 +8,24 @@ const FALLBACK_USD_RATES = {
   USD: 1,
   EUR: 0.92,
   GBP: 0.79,
+  SEK: 10.5,
 };
 
 function normalizeRateMap(rates = {}) {
-  return {
-    USD: Number(rates.USD) || 1,
-    EUR: Number(rates.EUR) || FALLBACK_USD_RATES.EUR,
-    GBP: Number(rates.GBP) || FALLBACK_USD_RATES.GBP,
-  };
+  const normalized = { ...FALLBACK_USD_RATES };
+
+  Object.entries(rates || {}).forEach(([code, value]) => {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      normalized[String(code).toUpperCase()] = numeric;
+    }
+  });
+
+  if (!normalized.USD) {
+    normalized.USD = 1;
+  }
+
+  return normalized;
 }
 
 function isCacheFresh(timestamp) {

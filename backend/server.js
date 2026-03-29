@@ -4,6 +4,7 @@ import express from "express";
 import { createSign } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { supabase } from "./lib/supabase.js";
 
 const app = express();
 
@@ -918,6 +919,44 @@ app.get("/api/banking/link/callback", async (req, res) => {
       accounts,
     };
 
+    // Save linked bank to Supabase with robust debug logging and timeout
+    try {
+      console.log("[SUPABASE UPSERT] About to upsert to Supabase");
+      const upsertPromise = supabase.from("linked_banks").upsert(
+        {
+          user_id: userId,
+          bank_id: bankId,
+          linked_at: new Date().toISOString(),
+          session_id: sessionId || null,
+          aspsp: pending.aspsp || null,
+          accounts: accounts || null,
+        },
+        { onConflict: ["user_id", "bank_id"] },
+      );
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Supabase upsert timed out")), 5000),
+      );
+      const { data: upsertData, error: upsertError } = await Promise.race([
+        upsertPromise,
+        timeoutPromise,
+      ]);
+      console.log(
+        "[LINKED_BANKS UPSERT] userId:",
+        userId,
+        "bankId:",
+        bankId,
+        "sessionId:",
+        sessionId,
+      );
+      if (upsertError) {
+        console.error("[SUPABASE UPSERT ERROR]", upsertError);
+      } else {
+        console.log("[SUPABASE UPSERT SUCCESS]", upsertData);
+      }
+    } catch (err) {
+      console.error("[SUPABASE UPSERT EXCEPTION]", err);
+    }
+
     const psuHeaders = getPsuHeaders(req);
     let transactions = [];
     try {
@@ -949,14 +988,40 @@ app.get("/api/banking/link/callback", async (req, res) => {
       sessionId,
     );
 
-    const existingById = new Map(
-      userRecord.subscriptions.map((item) => [item.id, item]),
-    );
-    detected.forEach((item) => {
-      existingById.set(item.id, item);
-    });
-    userRecord.subscriptions = Array.from(existingById.values());
+    // Persist detected subscriptions to Supabase
+    if (detected.length > 0) {
+      // Map detected subscriptions to Supabase schema
+      const upsertRows = detected.map((item) => ({
+        user_id: userId,
+        subscription_id: item.id,
+        name: item.name,
+        amount: item.amountValue,
+        currency: item.currency,
+        frequency: item.frequency,
+        next_payment: item.nextPaymentIso,
+        bank_id: item.bankId,
+        imported_at: item.importedAt,
+        updated_at: new Date().toISOString(),
+      }));
+      try {
+        const { error: detectedError } = await supabase
+          .from("detected_subscriptions")
+          .upsert(upsertRows, { onConflict: ["user_id", "subscription_id"] });
+        if (detectedError) {
+          console.error(
+            "[SUPABASE UPSERT DETECTED SUBSCRIPTIONS ERROR]",
+            detectedError,
+          );
+        }
+      } catch (err) {
+        console.error(
+          "[SUPABASE UPSERT DETECTED SUBSCRIPTIONS EXCEPTION]",
+          err,
+        );
+      }
+    }
 
+    // No longer update in-memory subscriptions; always load from Supabase
     return res.redirect(
       `${appRedirectUrl}?status=success&bankId=${encodeURIComponent(bankId)}`,
     );
@@ -968,7 +1033,7 @@ app.get("/api/banking/link/callback", async (req, res) => {
   }
 });
 
-app.get("/api/banking/links", (req, res) => {
+app.get("/api/banking/links", async (req, res) => {
   const userId = String(req.query.userId || "");
   if (!userId) {
     return res
@@ -976,13 +1041,23 @@ app.get("/api/banking/links", (req, res) => {
       .json({ error: "userId query parameter is required." });
   }
 
-  const record = getUserRecord(userId);
+  // Fetch linked banks from Supabase
+  const { data, error } = await supabase
+    .from("linked_banks")
+    .select("bank_id")
+    .eq("user_id", userId);
+
+  if (error) {
+    return res.status(500).json({ error: error.message });
+  }
+
   return res.json({
-    linkedBankIds: Array.from(record.linkedBanks),
+    linkedBankIds: (data || []).map((row) => row.bank_id),
   });
 });
 
-app.get("/api/banking/subscriptions-detected", (req, res) => {
+// Get detected subscriptions, merged with user edits from Supabase
+app.get("/api/banking/subscriptions-detected", async (req, res) => {
   const userId = String(req.query.userId || "");
   if (!userId) {
     return res
@@ -990,10 +1065,84 @@ app.get("/api/banking/subscriptions-detected", (req, res) => {
       .json({ error: "userId query parameter is required." });
   }
 
-  const record = getUserRecord(userId);
-  return res.json({
-    subscriptions: record.subscriptions,
+  // Get all detected subscriptions for the user from Supabase
+  const { data, error } = await supabase
+    .from("detected_subscriptions")
+    .select(
+      "subscription_id, name, amount, currency, frequency, next_payment, bank_id, imported_at, updated_at, monthly_amount",
+    )
+    .eq("user_id", userId);
+  if (error) {
+    return res.status(500).json({ error: error.message });
+  }
+  // Map to frontend format
+  const subscriptions = (data || []).map((row) => ({
+    id: row.subscription_id,
+    name: row.name,
+    amountValue: row.amount,
+    currency: row.currency,
+    frequency: row.frequency,
+    nextPaymentIso: row.next_payment,
+    bankId: row.bank_id,
+    importedAt: row.imported_at,
+    updatedAt: row.updated_at,
+    monthlyAmount: row.monthly_amount,
+    source: "bank",
+  }));
+  return res.json({ subscriptions });
+});
+
+// Update (upsert) a detected subscription for a user
+app.put("/api/banking/subscriptions-detected/:id", async (req, res) => {
+  console.log("PUT /api/banking/subscriptions-detected/:id called", {
+    params: req.params,
+    body: req.body,
+    query: req.query,
   });
+  const userId = String(req.body.userId || req.query.userId || "");
+  const subscriptionId = String(req.params.id || "");
+  if (!userId || !subscriptionId) {
+    return res
+      .status(400)
+      .json({ error: "userId and subscription id are required." });
+  }
+  const { name, amount, currency, frequency, nextPaymentIso } = req.body || {};
+
+  // Calculate monthlyMultiplier based on frequency
+  let monthlyMultiplier = 1;
+  if (frequency === "Weekly") monthlyMultiplier = 52 / 12;
+  else if (frequency === "Monthly") monthlyMultiplier = 1;
+  else if (frequency === "Yearly") monthlyMultiplier = 1 / 12;
+
+  // Calculate monthlyAmount
+  let monthlyAmount = null;
+  if (typeof amount === "number" && !isNaN(amount)) {
+    monthlyAmount = Number((amount * monthlyMultiplier).toFixed(2));
+  }
+
+  // Upsert into Supabase
+  const { error } = await supabase.from("detected_subscriptions").upsert(
+    [
+      {
+        user_id: userId,
+        subscription_id: subscriptionId,
+        name,
+        amount,
+        currency,
+        frequency,
+        next_payment: nextPaymentIso,
+        monthly_amount: monthlyAmount,
+        updated_at: new Date().toISOString(),
+      },
+    ],
+    { onConflict: ["user_id", "subscription_id"] },
+  );
+  if (error) {
+    // Log error for debugging
+    console.error("Failed to update detected subscription:", error);
+    return res.status(500).json({ error: error.message || String(error) });
+  }
+  return res.json({ success: true });
 });
 
 app.get("/api/banking/transactions", (req, res) => {
@@ -1020,6 +1169,26 @@ app.get("/api/debug/inspect", (req, res) => {
     transactionFetchError: r.transactionFetchError || null,
     transactionFetchDiagnostics: r.transactionFetchDiagnostics || [],
   });
+});
+
+app.delete("/api/banking/links", async (req, res) => {
+  const userId = String(req.body.userId || req.query.userId || "");
+  const bankId = String(req.body.bankId || req.query.bankId || "");
+  if (!userId || !bankId) {
+    return res.status(400).json({ error: "userId and bankId are required." });
+  }
+
+  const { error } = await supabase
+    .from("linked_banks")
+    .delete()
+    .eq("user_id", userId)
+    .eq("bank_id", bankId);
+
+  if (error) {
+    return res.status(500).json({ error: error.message });
+  }
+
+  return res.json({ success: true });
 });
 
 app.listen(PORT, () => {

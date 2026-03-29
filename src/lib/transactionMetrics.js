@@ -2,6 +2,9 @@
  * Calculate spending metrics from bank transactions and subscriptions
  */
 
+import { convertCurrencyAmount } from "./currencyConversion";
+import { computeMonthlyAmount } from "./manualSubscriptions";
+
 export function calculateMonthlySpend(
   subscriptions,
   usdRates,
@@ -10,18 +13,19 @@ export function calculateMonthlySpend(
   if (!subscriptions || subscriptions.length === 0) return 0;
 
   return subscriptions.reduce((sum, sub) => {
-    const monthlyAmount = Number(sub.monthlyAmount || sub.amountValue || 0);
+    // Use the original amount and frequency for monthly calculation
+    const baseAmount =
+      sub.amountValue !== undefined ? sub.amountValue : sub.amount;
+    const freq = sub.frequency || "Monthly";
+    const monthlyAmount = computeMonthlyAmount(baseAmount, freq);
     const currency = sub.currency || "USD";
 
-    // Convert to preferred currency if different
-    if (currency === preferredCurrency) {
-      return sum + monthlyAmount;
-    }
-
-    // Simple conversion using rates
-    const rate = usdRates[currency] || 1;
-    const preferredRate = usdRates[preferredCurrency] || 1;
-    const converted = (monthlyAmount / rate) * preferredRate;
+    const converted = convertCurrencyAmount(
+      monthlyAmount,
+      currency,
+      preferredCurrency,
+      usdRates,
+    );
     return sum + converted;
   }, 0);
 }
@@ -83,13 +87,12 @@ export function calculateUpcomingAmount(
       const amount = Number(sub.amountValue || 0);
       const currency = sub.currency || "USD";
 
-      if (currency === preferredCurrency) {
-        return sum + amount;
-      }
-
-      const rate = usdRates[currency] || 1;
-      const preferredRate = usdRates[preferredCurrency] || 1;
-      const converted = (amount / rate) * preferredRate;
+      const converted = convertCurrencyAmount(
+        amount,
+        currency,
+        preferredCurrency,
+        usdRates,
+      );
       return sum + converted;
     }, 0);
 }

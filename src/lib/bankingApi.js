@@ -59,6 +59,13 @@ export async function getTransactions(userId) {
   return requestJson(`/api/banking/transactions?${params.toString()}`);
 }
 
+export async function removeLinkedBank(userId, bankId) {
+  const params = new URLSearchParams({ userId, bankId });
+  return requestJson(`/api/banking/links?${params.toString()}`, {
+    method: "DELETE",
+  });
+}
+
 export function getBackendHealthUrl() {
   return `${getBackendBaseUrl()}/health`;
 }
