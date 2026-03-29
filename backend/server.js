@@ -373,13 +373,37 @@ function parseTransactionDate(transaction) {
 }
 
 function normalizeMerchantName(transaction) {
-  const candidate =
-    transaction.creditor?.name ||
-    transaction.debtor?.name ||
-    transaction.remittance_information?.[0] ||
-    "Unknown Merchant";
+  const sanitize = (value) =>
+    String(value || "")
+      .toLowerCase()
+      .replace(/order\s*no\s*\d+/gi, "order")
+      .replace(/\b\d{4,}\b/g, "")
+      .replace(/[^a-z\s&.-]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
 
-  return String(candidate).trim();
+  const preferred = [
+    transaction.creditor?.name,
+    transaction.remittance_information?.[0],
+    transaction.note,
+    transaction.reference_number,
+  ];
+
+  for (const item of preferred) {
+    const normalized = sanitize(item);
+    if (normalized && normalized !== "mr popcorn") {
+      return normalized
+        .split(" ")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+    }
+  }
+
+  const fallback = sanitize(transaction.debtor?.name) || "unknown merchant";
+  return fallback
+    .split(" ")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function detectFrequency(diffDays) {
@@ -450,7 +474,19 @@ function detectSubscriptionsFromTransactions(transactions, bankId, sessionId) {
 
     const avgDiff =
       dayDiffs.reduce((sum, value) => sum + value, 0) / dayDiffs.length;
-    const cadence = detectFrequency(avgDiff);
+    const uniqueDays = new Set(
+      sorted.map((entry) => entry.date.toISOString().slice(0, 10)),
+    ).size;
+
+    const cadence =
+      detectFrequency(avgDiff) ||
+      (sorted.length >= 2 && uniqueDays >= 2
+        ? {
+            frequency: "Monthly",
+            monthlyMultiplier: 1,
+            nextDays: 30,
+          }
+        : null);
 
     if (!cadence) {
       return;
