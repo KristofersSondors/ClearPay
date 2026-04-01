@@ -4,11 +4,13 @@ import { createStackNavigator } from "@react-navigation/stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { Text, View, TouchableOpacity, Platform } from "react-native";
+import { useRef } from "react";
 import {
   SafeAreaProvider,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import ClearPayLogo from "./src/components/ClearPayLogo";
+import { getSupabaseClient, hasSupabaseConfig } from "./src/lib/supabase";
 
 import WelcomeScreen from "./screens/WelcomeScreen";
 import LoginScreen from "./screens/LoginScreen";
@@ -127,9 +129,34 @@ function MainTabs({ navigation }) {
 }
 
 export default function App() {
+  const navigationRef = useRef(null);
+
+  const handleNavigationReady = async () => {
+    if (Platform.OS !== "web") return;
+    const params = new URLSearchParams(window.location.search);
+    if (!params.get("bankLinked")) return;
+
+    // Clean the URL immediately
+    window.history.replaceState({}, "", window.location.pathname);
+
+    // Check if the user is still authenticated, then go straight to Settings
+    if (hasSupabaseConfig) {
+      const supabase = getSupabaseClient();
+      const { data } = await supabase.auth.getUser();
+      if (data?.user) {
+        navigationRef.current?.reset({
+          index: 1,
+          routes: [{ name: "Main" }, { name: "Settings" }],
+        });
+        return;
+      }
+    }
+    // Not authenticated — let them land on Welcome as normal
+  };
+
   return (
     <SafeAreaProvider>
-      <NavigationContainer>
+      <NavigationContainer ref={navigationRef} onReady={handleNavigationReady}>
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           <Stack.Screen name="Welcome" component={WelcomeScreen} />
           <Stack.Screen name="Login" component={LoginScreen} />
