@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import {
   View,
   Text,
+  Image,
   TextInput,
   TouchableOpacity,
   StyleSheet,
@@ -125,6 +126,13 @@ export default function RegisterScreen({ navigation }) {
         style={{ flex: 1 }}
       >
         <ScrollView contentContainerStyle={styles.container}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate("Welcome")}
+          >
+            <Text style={styles.backButtonText}>← Back</Text>
+          </TouchableOpacity>
+
           <View style={styles.progressBar}>
             <View style={[styles.progressSegment, styles.progressActive]} />
             <View style={styles.progressSegment} />
@@ -132,7 +140,11 @@ export default function RegisterScreen({ navigation }) {
           </View>
 
           <View style={styles.logoBox}>
-            <Text style={styles.logoText}>C</Text>
+            <Image
+              source={require("../Logo.png")}
+              style={{ width: 34, height: 34 }}
+              resizeMode="contain"
+            />
           </View>
           <Text style={styles.title}>Create your ClearPay account</Text>
 
@@ -140,7 +152,7 @@ export default function RegisterScreen({ navigation }) {
             <Text style={styles.label}>Full name</Text>
             <TextInput
               style={styles.input}
-              placeholder="Toms Irgiejs"
+              placeholder="Alex Johnson"
               placeholderTextColor="#aaa"
               value={name}
               onChangeText={(value) => {
@@ -153,7 +165,7 @@ export default function RegisterScreen({ navigation }) {
             <Text style={styles.label}>Email address</Text>
             <TextInput
               style={styles.input}
-              placeholder="toms@irge.com"
+              placeholder="alex@example.com"
               placeholderTextColor="#aaa"
               value={email}
               onChangeText={(value) => {
@@ -232,6 +244,8 @@ export default function RegisterScreen({ navigation }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F0F0F5" },
   container: { flexGrow: 1, alignItems: "center", padding: 24, paddingTop: 20 },
+  backButton: { alignSelf: "flex-start", marginBottom: 12 },
+  backButtonText: { fontSize: 14, color: "#5B3FD9", fontWeight: "500" },
   progressBar: {
     flexDirection: "row",
     width: "100%",

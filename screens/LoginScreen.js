@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
+  Image,
   TextInput,
   TouchableOpacity,
   StyleSheet,
@@ -281,7 +282,11 @@ export default function LoginScreen({ navigation }) {
             <Text style={styles.backButtonText}>← Back</Text>
           </TouchableOpacity>
           <View style={styles.logoBox}>
-            <Text style={styles.logoText}>C</Text>
+            <Image
+              source={require("../Logo.png")}
+              style={{ width: 34, height: 34 }}
+              resizeMode="contain"
+            />
           </View>
           <Text style={styles.title}>Sign in to ClearPay</Text>
           <Text style={styles.subtitle}>
@@ -292,7 +297,7 @@ export default function LoginScreen({ navigation }) {
             <Text style={styles.label}>Email address</Text>
             <TextInput
               style={styles.input}
-              placeholder="toms@irge.com"
+              placeholder="alex@example.com"
               placeholderTextColor="#aaa"
               value={email}
               onChangeText={(value) => {

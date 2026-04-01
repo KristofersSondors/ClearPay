@@ -6,6 +6,7 @@ import {
   StyleSheet,
   StatusBar,
   Dimensions,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -22,8 +23,12 @@ export default function WelcomeScreen({ navigation }) {
 
       <View style={styles.content}>
         {/* Logo */}
-        <View style={styles.logoBox}>
-          <Text style={styles.logoText}>C</Text>
+          <View style={styles.logoBox}>
+          <Image
+            source={require("../Logo.png")}
+            style={{ width: 56, height: 56 }}
+            resizeMode="contain"
+          />
         </View>
 
         {/* Brand */}
@@ -110,12 +115,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 16,
     elevation: 8,
-  },
-  logoText: {
-    color: "#fff",
-    fontSize: 38,
-    fontWeight: "800",
-    letterSpacing: -1,
+    overflow: "hidden",
   },
 
   appName: {

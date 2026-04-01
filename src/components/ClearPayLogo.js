@@ -1,25 +1,25 @@
 import React from "react";
-import { View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Image, View } from "react-native";
 
-const PURPLE = "#5B3FD9";
+const logoSource = require("../../Logo.png");
 
-export default function ClearPayLogo({ size = 34, radius = 9, inverted = false }) {
-  const bgColor = inverted ? "#fff" : PURPLE;
-  const iconColor = inverted ? PURPLE : "#fff";
-
+export default function ClearPayLogo({ size = 34, radius = 9 }) {
   return (
     <View
       style={{
         width: size,
         height: size,
         borderRadius: radius,
-        backgroundColor: bgColor,
+        overflow: "hidden",
         justifyContent: "center",
         alignItems: "center",
       }}
     >
-      <Ionicons name="card" size={Math.round(size * 0.52)} color={iconColor} />
+      <Image
+        source={logoSource}
+        style={{ width: size, height: size }}
+        resizeMode="contain"
+      />
     </View>
   );
 }

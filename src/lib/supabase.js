@@ -25,6 +25,24 @@ const usePublicAvatarUrls =
 
 export const hasSupabaseConfig = Boolean(supabaseUrl && supabaseAnonKey);
 
+const AVATAR_CACHE_PREFIX = "clearpay_avatar_cache_";
+
+export async function cacheAvatarUrl(userId, url) {
+  if (!userId || !url) return;
+  try {
+    await AsyncStorage.setItem(`${AVATAR_CACHE_PREFIX}${userId}`, url);
+  } catch {}
+}
+
+async function getCachedAvatarUrl(userId) {
+  if (!userId) return "";
+  try {
+    return (await AsyncStorage.getItem(`${AVATAR_CACHE_PREFIX}${userId}`)) || "";
+  } catch {
+    return "";
+  }
+}
+
 let client;
 
 function fallbackDisplayName(email = "") {
@@ -180,12 +198,22 @@ export async function getAuthenticatedProfile() {
       await getAvatarUrlByPath(resolvedAvatarPath);
     profile.avatarUrl = avatarUrl || "";
 
-    if (avatarUrlError) {
-      return {
-        profile,
-        error: avatarUrlError,
-      };
+    if (avatarUrl) {
+      await cacheAvatarUrl(profile.id, avatarUrl);
     }
+
+    if (avatarUrlError) {
+      // Fall back to cached URL so the avatar still shows
+      if (!profile.avatarUrl) {
+        profile.avatarUrl = await getCachedAvatarUrl(profile.id);
+      }
+      return { profile, error: avatarUrlError };
+    }
+  }
+
+  // If we still have no URL, try the local cache (covers offline / bucket issues)
+  if (!profile.avatarUrl) {
+    profile.avatarUrl = await getCachedAvatarUrl(profile.id);
   }
 
   return { profile, error: null };
@@ -330,6 +358,10 @@ export async function uploadAuthenticatedProfilePhoto(imageUri) {
       avatarPath,
       error: avatarUrlError,
     };
+  }
+
+  if (avatarUrl) {
+    await cacheAvatarUrl(user.id, avatarUrl);
   }
 
   return {

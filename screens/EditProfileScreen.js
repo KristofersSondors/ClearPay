@@ -13,13 +13,14 @@ import {
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { requireOptionalNativeModule } from "expo-modules-core";
+import * as ImagePicker from "expo-image-picker";
 import {
   getAuthenticatedProfile,
   getSupabaseClient,
   hasSupabaseConfig,
   uploadAuthenticatedProfilePhoto,
   updateAuthenticatedProfile,
+  cacheAvatarUrl,
 } from "../src/lib/supabase";
 import {
   sanitizeEmail,
@@ -80,43 +81,12 @@ export default function EditProfileScreen({ navigation }) {
     loadProfile();
   }, []);
 
-  const getImagePickerModule = async () => {
-    const imagePickerNativeModule = requireOptionalNativeModule(
-      "ExponentImagePicker",
-    );
-
-    if (!imagePickerNativeModule) {
-      Alert.alert(
-        "Photo upload unavailable",
-        "Image picker native module is not available in this build yet. Rebuild the iOS app (npx expo run:ios).",
-      );
-      return null;
-    }
-
-    try {
-      const imagePickerModule = await import("expo-image-picker");
-      return imagePickerModule;
-    } catch {
-      Alert.alert(
-        "Photo upload unavailable",
-        "This iOS build does not include the image picker native module yet. Rebuild the app after installing the dependency.",
-      );
-      return null;
-    }
-  };
-
   const handlePickPhoto = async () => {
     if (loading || saving) {
       return;
     }
 
     try {
-      const ImagePicker = await getImagePickerModule();
-
-      if (!ImagePicker) {
-        return;
-      }
-
       const permissionResult =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
 
@@ -152,6 +122,15 @@ export default function EditProfileScreen({ navigation }) {
       setAvatarLoadFailed(false);
       setHasPendingAvatarUpload(true);
       setError("");
+
+      // Cache the local URI immediately so Settings shows it right away
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        const { data } = await supabase.auth.getUser();
+        if (data?.user?.id) {
+          await cacheAvatarUrl(data.user.id, selectedAsset.uri);
+        }
+      }
     } catch {
       setError("Something went wrong while selecting a photo.");
     }
