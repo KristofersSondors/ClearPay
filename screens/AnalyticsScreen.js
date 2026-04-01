@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
 } from "react-native";
 import { LineChart } from "react-native-chart-kit";
-import Svg, { G, Path } from "react-native-svg";
+import Svg, { Circle, G, Path } from "react-native-svg";
 import { getManualSubscriptions } from "../src/lib/manualSubscriptions";
 import {
   getDetectedBankSubscriptions,
@@ -56,10 +56,7 @@ function monthLabel(date) {
 }
 
 function weekLabel(date) {
-  const start = new Date(date);
-  const end = new Date(date);
-  end.setDate(end.getDate() + 6);
-  return `${start.toLocaleDateString("en-US", { month: "short", day: "numeric" })}-${end.toLocaleDateString("en-US", { day: "numeric" })}`;
+  return date.toLocaleDateString("en-US", { month: "numeric", day: "numeric" });
 }
 
 function yearLabel(date) {
@@ -98,6 +95,7 @@ const DonutChart = ({ data, currencyCode }) => {
     chartData.find((item) => item.label === selectedLabel) ||
     chartData[0] ||
     null;
+  const isSingleSlice = chartData.length === 1;
 
   let cumulative = 0;
   const slices = chartData.map((d) => {
@@ -132,17 +130,31 @@ const DonutChart = ({ data, currencyCode }) => {
   return (
     <View style={{ alignItems: "center" }}>
       <Svg width={size} height={size}>
-        <G>
-          {slices.map((s, i) => (
-            <Path
-              key={`${s.label}-${i}`}
-              d={s.path}
-              fill={s.color}
-              fillOpacity={s.isSelected ? 1 : 0.8}
-              onPress={() => setSelectedLabel(s.label)}
+        {isSingleSlice ? (
+          <G>
+            <Circle
+              cx={cx}
+              cy={cy}
+              r={r}
+              fill={selected?.color || "#5B3FD9"}
+              fillOpacity={1}
+              onPress={() => setSelectedLabel(selected?.label || "")}
             />
-          ))}
-        </G>
+            <Circle cx={cx} cy={cy} r={innerR} fill="#fff" />
+          </G>
+        ) : (
+          <G>
+            {slices.map((s, i) => (
+              <Path
+                key={`${s.label}-${i}`}
+                d={s.path}
+                fill={s.color}
+                fillOpacity={s.isSelected ? 1 : 0.8}
+                onPress={() => setSelectedLabel(s.label)}
+              />
+            ))}
+          </G>
+        )}
       </Svg>
       {selected ? (
         <View style={styles.chartCenterInfo}>
@@ -185,6 +197,7 @@ export default function AnalyticsScreen({ navigation }) {
   const [usdRates, setUsdRates] = useState({ USD: 1, EUR: 0.92, GBP: 0.79 });
   const [sourceFilter, setSourceFilter] = useState("all");
   const [frequencyFilter, setFrequencyFilter] = useState("all");
+  const [activePoint, setActivePoint] = useState(null);
 
   const resolveUserId = async () => {
     if (hasSupabaseConfig) {
@@ -293,8 +306,8 @@ export default function AnalyticsScreen({ navigation }) {
     const periodConfig =
       frequencyFilter === "Weekly"
         ? {
-            points: 8,
-            start: addWeeks(now, -7),
+            points: 6,
+            start: addWeeks(now, -5),
             add: (date, step) => addWeeks(date, step),
             label: (date) => weekLabel(date),
             amount: (item) => (toMonthlyAmount(item) * 12) / 52,
@@ -361,6 +374,10 @@ export default function AnalyticsScreen({ navigation }) {
       : frequencyFilter === "Yearly"
         ? "Yearly Spend Trend"
         : "Monthly Spend Trend";
+
+  useEffect(() => {
+    setActivePoint(null);
+  }, [frequencyFilter, sourceFilter]);
 
   const spendByFrequency = useMemo(() => {
     const base = {
@@ -456,6 +473,18 @@ export default function AnalyticsScreen({ navigation }) {
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>{trendTitle}</Text>
+        {activePoint ? (
+          <View style={styles.chartHoverSummary}>
+            <Text style={styles.chartHoverSummaryText}>
+              {activePoint.label}: {preferredCurrencyMeta.code}{" "}
+              {activePoint.value.toFixed(2)}
+            </Text>
+          </View>
+        ) : (
+          <Text style={styles.chartHoverHint}>
+            Tap a point to inspect value
+          </Text>
+        )}
         <LineChart
           data={lineData}
           width={W - 16}
@@ -471,13 +500,44 @@ export default function AnalyticsScreen({ navigation }) {
             propsForDots: { r: "4", strokeWidth: "2", stroke: "#5B3FD9" },
             propsForBackgroundLines: { stroke: "#F0F0F0" },
           }}
+          onDataPointClick={({ value, index, x, y }) => {
+            const label = lineData.labels[index] || "";
+            setActivePoint({ value: Number(value || 0), index, x, y, label });
+          }}
+          decorator={() => {
+            if (!activePoint) {
+              return null;
+            }
+
+            return (
+              <G>
+                <Circle
+                  cx={activePoint.x}
+                  cy={activePoint.y}
+                  r="6"
+                  fill="#FFFFFF"
+                  stroke="#5B3FD9"
+                  strokeWidth="3"
+                />
+                <Circle
+                  cx={activePoint.x}
+                  cy={activePoint.y}
+                  r="10"
+                  fill="#5B3FD920"
+                />
+              </G>
+            );
+          }}
           bezier
           style={{ marginLeft: -16 }}
         />
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Spend by Frequency (Monthly Basis)</Text>
+        <Text style={styles.cardTitle}>Spend by Billing Cycle</Text>
+        <Text style={styles.cardSubtitle}>
+          All values normalized to monthly equivalent
+        </Text>
         <DonutChart
           data={spendByFrequency}
           currencyCode={preferredCurrencyMeta.code}
@@ -515,6 +575,12 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#1a1a1a",
     marginBottom: 12,
+  },
+  cardSubtitle: {
+    fontSize: 12,
+    color: "#777",
+    marginTop: -6,
+    marginBottom: 10,
   },
   filterLabel: {
     fontSize: 12,
@@ -554,6 +620,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#888",
     marginTop: 2,
+  },
+  chartHoverHint: {
+    fontSize: 12,
+    color: "#999",
+    marginBottom: 6,
+  },
+  chartHoverSummary: {
+    alignSelf: "flex-start",
+    backgroundColor: "#F0EEFF",
+    borderColor: "#DDD6F7",
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: 6,
+  },
+  chartHoverSummaryText: {
+    fontSize: 12,
+    color: "#4C1D95",
+    fontWeight: "600",
   },
   emptyChartText: {
     fontSize: 13,
