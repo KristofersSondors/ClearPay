@@ -55,8 +55,29 @@ function monthLabel(date) {
   return date.toLocaleDateString("en-US", { month: "short" });
 }
 
+function weekLabel(date) {
+  const start = new Date(date);
+  const end = new Date(date);
+  end.setDate(end.getDate() + 6);
+  return `${start.toLocaleDateString("en-US", { month: "short", day: "numeric" })}-${end.toLocaleDateString("en-US", { day: "numeric" })}`;
+}
+
+function yearLabel(date) {
+  return String(date.getFullYear());
+}
+
 function addMonths(date, months) {
   return new Date(date.getFullYear(), date.getMonth() + months, 1);
+}
+
+function addWeeks(date, weeks) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + weeks * 7);
+  return next;
+}
+
+function addYears(date, years) {
+  return new Date(date.getFullYear() + years, 0, 1);
 }
 
 const DonutChart = ({ data, currencyCode }) => {
@@ -267,27 +288,51 @@ export default function AnalyticsScreen({ navigation }) {
   }, [combinedSubscriptions, sourceFilter, frequencyFilter]);
 
   const lineData = useMemo(() => {
-    const monthsBack = 5;
     const now = new Date();
-    const start = addMonths(
-      new Date(now.getFullYear(), now.getMonth(), 1),
-      -monthsBack,
-    );
-    const monthStarts = Array.from({ length: monthsBack + 1 }, (_, i) =>
-      addMonths(start, i),
+
+    const periodConfig =
+      frequencyFilter === "Weekly"
+        ? {
+            points: 8,
+            start: addWeeks(now, -7),
+            add: (date, step) => addWeeks(date, step),
+            label: (date) => weekLabel(date),
+            amount: (item) => (toMonthlyAmount(item) * 12) / 52,
+          }
+        : frequencyFilter === "Yearly"
+          ? {
+              points: 5,
+              start: addYears(new Date(now.getFullYear(), 0, 1), -4),
+              add: (date, step) => addYears(date, step),
+              label: (date) => yearLabel(date),
+              amount: (item) => toMonthlyAmount(item) * 12,
+            }
+          : {
+              points: 6,
+              start: addMonths(
+                new Date(now.getFullYear(), now.getMonth(), 1),
+                -5,
+              ),
+              add: (date, step) => addMonths(date, step),
+              label: (date) => monthLabel(date),
+              amount: (item) => toMonthlyAmount(item),
+            };
+
+    const periodStarts = Array.from({ length: periodConfig.points }, (_, i) =>
+      periodConfig.add(periodConfig.start, i),
     );
 
-    const labels = monthStarts.map((d) => monthLabel(d));
+    const labels = periodStarts.map((d) => periodConfig.label(d));
 
-    const dataset = monthStarts.map((monthStart) => {
-      const monthEnd = addMonths(monthStart, 1);
+    const dataset = periodStarts.map((periodStart) => {
+      const periodEnd = periodConfig.add(periodStart, 1);
 
       return filteredSubscriptions.reduce((sum, item) => {
         const createdAt = resolveSubscriptionStartDate(item);
         if (
           !createdAt ||
           Number.isNaN(createdAt.getTime()) ||
-          createdAt >= monthEnd
+          createdAt >= periodEnd
         ) {
           return sum;
         }
@@ -295,7 +340,7 @@ export default function AnalyticsScreen({ navigation }) {
         return (
           sum +
           convertCurrencyAmount(
-            toMonthlyAmount(item),
+            periodConfig.amount(item),
             item.currency || "USD",
             preferredCurrency,
             usdRates,
@@ -308,7 +353,14 @@ export default function AnalyticsScreen({ navigation }) {
       labels,
       datasets: [{ data: dataset.map((value) => Number(value.toFixed(2))) }],
     };
-  }, [filteredSubscriptions, preferredCurrency, usdRates]);
+  }, [filteredSubscriptions, preferredCurrency, usdRates, frequencyFilter]);
+
+  const trendTitle =
+    frequencyFilter === "Weekly"
+      ? "Weekly Spend Trend"
+      : frequencyFilter === "Yearly"
+        ? "Yearly Spend Trend"
+        : "Monthly Spend Trend";
 
   const spendByFrequency = useMemo(() => {
     const base = {
@@ -403,7 +455,7 @@ export default function AnalyticsScreen({ navigation }) {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Monthly Spend Trend</Text>
+        <Text style={styles.cardTitle}>{trendTitle}</Text>
         <LineChart
           data={lineData}
           width={W - 16}
