@@ -11,6 +11,7 @@ import {
   Animated,
   PanResponder,
 } from "react-native";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import SubscriptionLogo from "../src/components/SubscriptionLogo";
 import { getManualSubscriptions } from "../src/lib/manualSubscriptions";
 import {
@@ -57,54 +58,57 @@ function useSwipeToDismiss(onDismiss) {
 }
 
 const SORT_OPTIONS = [
-  { key: "nextPayment",         label: "Next payment (soonest)" },
-  { key: "mostExpensiveMonthly",label: "Most expensive monthly" },
-  { key: "cheapestMonthly",     label: "Cheapest monthly" },
+  { key: "nextPayment", label: "Next payment (soonest)" },
+  { key: "mostExpensiveMonthly", label: "Most expensive monthly" },
+  { key: "cheapestMonthly", label: "Cheapest monthly" },
   { key: "mostExpensiveYearly", label: "Most expensive yearly" },
-  { key: "cheapestYearly",      label: "Cheapest yearly" },
-  { key: "nameAZ",              label: "Name A to Z" },
-  { key: "nameZA",              label: "Name Z to A" },
-  { key: "recentlyAdded",       label: "Recently added" },
+  { key: "cheapestYearly", label: "Cheapest yearly" },
+  { key: "nameAZ", label: "Name A to Z" },
+  { key: "nameZA", label: "Name Z to A" },
+  { key: "recentlyAdded", label: "Recently added" },
 ];
 
 const SOURCE_OPTIONS = [
-  { key: "all",    label: "All sources" },
+  { key: "all", label: "All sources" },
   { key: "manual", label: "Manual" },
-  { key: "bank",   label: "Bank detected" },
+  { key: "bank", label: "Bank detected" },
 ];
 
 const FREQ_OPTIONS = [
-  { key: "all",     label: "All frequencies" },
-  { key: "Weekly",  label: "Weekly" },
+  { key: "all", label: "All frequencies" },
+  { key: "Weekly", label: "Weekly" },
   { key: "Monthly", label: "Monthly" },
-  { key: "Yearly",  label: "Yearly" },
+  { key: "Yearly", label: "Yearly" },
 ];
 
 function toMonthlyAmount(amount, freq) {
   const n = Number(amount) || 0;
-  if (freq === "Weekly")  return (n * 52) / 12;
-  if (freq === "Yearly")  return n / 12;
+  if (freq === "Weekly") return (n * 52) / 12;
+  if (freq === "Yearly") return n / 12;
   return n;
 }
 
 export default function SubscriptionsScreen({ navigation }) {
-  const [search, setSearch]                     = useState("");
-  const [subscriptions, setSubscriptions]       = useState([]);
+  const [search, setSearch] = useState("");
+  const [subscriptions, setSubscriptions] = useState([]);
   const [bankSubscriptions, setBankSubscriptions] = useState([]);
 
   // Sort & filter state
-  const [sortKey, setSortKey]         = useState("nextPayment");
+  const [sortKey, setSortKey] = useState("nextPayment");
   const [sourceFilter, setSourceFilter] = useState("all");
-  const [freqFilter, setFreqFilter]   = useState("all");
-  const [nameFilter, setNameFilter]   = useState("");
+  const [freqFilter, setFreqFilter] = useState("all");
+  const [nameFilter, setNameFilter] = useState("");
 
   // Modal visibility
-  const [sortOpen, setSortOpen]     = useState(false);
+  const [sortOpen, setSortOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [nameSearch, setNameSearch] = useState("");
 
-  const sortSwipe   = useSwipeToDismiss(() => setSortOpen(false));
-  const filterSwipe = useSwipeToDismiss(() => { setFilterOpen(false); setNameSearch(""); });
+  const sortSwipe = useSwipeToDismiss(() => setSortOpen(false));
+  const filterSwipe = useSwipeToDismiss(() => {
+    setFilterOpen(false);
+    setNameSearch("");
+  });
 
   const resolveUserId = async () => {
     if (hasSupabaseConfig) {
@@ -123,11 +127,14 @@ export default function SubscriptionsScreen({ navigation }) {
       if (userId) {
         const linked = await getLinkedBanks(userId);
         const linkedBankIds = Array.isArray(linked?.linkedBankIds)
-          ? linked.linkedBankIds : [];
+          ? linked.linkedBankIds
+          : [];
         if (linkedBankIds.length > 0) {
           const bankSubs = await getDetectedBankSubscriptions(userId);
           setBankSubscriptions(
-            Array.isArray(bankSubs?.subscriptions) ? bankSubs.subscriptions : [],
+            Array.isArray(bankSubs?.subscriptions)
+              ? bankSubs.subscriptions
+              : [],
           );
         } else {
           setBankSubscriptions([]);
@@ -138,22 +145,33 @@ export default function SubscriptionsScreen({ navigation }) {
     }
   }, [navigation]);
 
-  useFocusEffect(useCallback(() => { loadSubscriptions(); }, [loadSubscriptions]));
+  useFocusEffect(
+    useCallback(() => {
+      loadSubscriptions();
+    }, [loadSubscriptions]),
+  );
 
   const normalizedSubscriptions = useMemo(() => {
     const allSubs = mergeSubscriptions(subscriptions, bankSubscriptions);
     return allSubs.map((item) => {
-      const nextDate = item.nextPaymentIso ? new Date(item.nextPaymentIso) : null;
+      const nextDate = item.nextPaymentIso
+        ? new Date(item.nextPaymentIso)
+        : null;
       const nextPaymentDate =
         nextDate && !Number.isNaN(nextDate.getTime())
-          ? nextDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+          ? nextDate.toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            })
           : "N/A";
 
-      const origAmount = item.amountValue !== undefined ? item.amountValue : (item.amount || 0);
+      const origAmount =
+        item.amountValue !== undefined ? item.amountValue : item.amount || 0;
       const displayAmount = Number(origAmount).toFixed(2);
-      const displayFreq   = item.frequency || "Monthly";
-      const monthly       = toMonthlyAmount(origAmount, displayFreq);
-      const yearly        = monthly * 12;
+      const displayFreq = item.frequency || "Monthly";
+      const monthly = toMonthlyAmount(origAmount, displayFreq);
+      const yearly = monthly * 12;
 
       return {
         id: item.id,
@@ -177,12 +195,20 @@ export default function SubscriptionsScreen({ navigation }) {
   const subscriptionNames = useMemo(() => {
     const seen = new Set();
     return normalizedSubscriptions
-      .filter((s) => { const k = s.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; })
+      .filter((s) => {
+        const k = s.name.toLowerCase();
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      })
       .map((s) => s.name);
   }, [normalizedSubscriptions]);
 
-  const filteredNameOptions = useMemo(() =>
-    subscriptionNames.filter((n) => n.toLowerCase().includes(nameSearch.toLowerCase())),
+  const filteredNameOptions = useMemo(
+    () =>
+      subscriptionNames.filter((n) =>
+        n.toLowerCase().includes(nameSearch.toLowerCase()),
+      ),
     [subscriptionNames, nameSearch],
   );
 
@@ -193,26 +219,36 @@ export default function SubscriptionsScreen({ navigation }) {
     !!nameFilter,
   ].filter(Boolean).length;
 
-  const sortLabel = SORT_OPTIONS.find((o) => o.key === sortKey)?.label ?? "Sort";
+  const sortLabel =
+    SORT_OPTIONS.find((o) => o.key === sortKey)?.label ?? "Sort";
 
   const processedList = useMemo(() => {
     let list = normalizedSubscriptions.filter((s) => {
-      if (search && !s.name.toLowerCase().includes(search.toLowerCase())) return false;
+      if (search && !s.name.toLowerCase().includes(search.toLowerCase()))
+        return false;
       if (sourceFilter !== "all" && s.source !== sourceFilter) return false;
       if (freqFilter !== "all" && s.freq !== freqFilter) return false;
-      if (nameFilter && s.name.toLowerCase() !== nameFilter.toLowerCase()) return false;
+      if (nameFilter && s.name.toLowerCase() !== nameFilter.toLowerCase())
+        return false;
       return true;
     });
 
     list = [...list].sort((a, b) => {
       switch (sortKey) {
-        case "mostExpensiveMonthly": return b.monthly - a.monthly;
-        case "cheapestMonthly":      return a.monthly - b.monthly;
-        case "mostExpensiveYearly":  return b.yearly  - a.yearly;
-        case "cheapestYearly":       return a.yearly  - b.yearly;
-        case "nameAZ":               return a.name.localeCompare(b.name);
-        case "nameZA":               return b.name.localeCompare(a.name);
-        case "recentlyAdded":        return (b.createdAt > a.createdAt ? 1 : -1);
+        case "mostExpensiveMonthly":
+          return b.monthly - a.monthly;
+        case "cheapestMonthly":
+          return a.monthly - b.monthly;
+        case "mostExpensiveYearly":
+          return b.yearly - a.yearly;
+        case "cheapestYearly":
+          return a.yearly - b.yearly;
+        case "nameAZ":
+          return a.name.localeCompare(b.name);
+        case "nameZA":
+          return b.name.localeCompare(a.name);
+        case "recentlyAdded":
+          return b.createdAt > a.createdAt ? 1 : -1;
         case "nextPayment":
         default: {
           if (!a.nextPaymentIso && !b.nextPaymentIso) return 0;
@@ -224,7 +260,14 @@ export default function SubscriptionsScreen({ navigation }) {
     });
 
     return list;
-  }, [normalizedSubscriptions, search, sortKey, sourceFilter, freqFilter, nameFilter]);
+  }, [
+    normalizedSubscriptions,
+    search,
+    sortKey,
+    sourceFilter,
+    freqFilter,
+    nameFilter,
+  ]);
 
   const clearAllFilters = () => {
     setSourceFilter("all");
@@ -233,7 +276,10 @@ export default function SubscriptionsScreen({ navigation }) {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 30 }}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={{ paddingBottom: 30 }}
+    >
       <Text style={styles.pageTitle}>Subscriptions</Text>
 
       {/* Search + controls */}
@@ -260,22 +306,43 @@ export default function SubscriptionsScreen({ navigation }) {
         {/* Sort + Filter row */}
         <View style={styles.controlRow}>
           <TouchableOpacity
-            style={[styles.controlBtn, sortKey !== "nextPayment" && styles.controlBtnActive]}
+            style={[
+              styles.controlBtn,
+              sortKey !== "nextPayment" && styles.controlBtnActive,
+            ]}
             onPress={() => setSortOpen(true)}
           >
-            <Text style={[styles.controlBtnText, sortKey !== "nextPayment" && styles.controlBtnTextActive]}>
+            <Text
+              style={[
+                styles.controlBtnText,
+                sortKey !== "nextPayment" && styles.controlBtnTextActive,
+              ]}
+            >
               Sort
             </Text>
-            <Text style={[styles.controlBtnChevron, sortKey !== "nextPayment" && styles.controlBtnTextActive]}>
-              {" "}↕
-            </Text>
+            <MaterialCommunityIcons
+              name="sort"
+              size={16}
+              style={[
+                styles.controlBtnIcon,
+                sortKey !== "nextPayment" && styles.controlBtnTextActive,
+              ]}
+            />
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.controlBtn, activeFilterCount > 0 && styles.controlBtnActive]}
+            style={[
+              styles.controlBtn,
+              activeFilterCount > 0 && styles.controlBtnActive,
+            ]}
             onPress={() => setFilterOpen(true)}
           >
-            <Text style={[styles.controlBtnText, activeFilterCount > 0 && styles.controlBtnTextActive]}>
+            <Text
+              style={[
+                styles.controlBtnText,
+                activeFilterCount > 0 && styles.controlBtnTextActive,
+              ]}
+            >
               Filter
             </Text>
             {activeFilterCount > 0 && (
@@ -283,15 +350,23 @@ export default function SubscriptionsScreen({ navigation }) {
                 <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
               </View>
             )}
-            <Text style={[styles.controlBtnChevron, activeFilterCount > 0 && styles.controlBtnTextActive]}>
-              {" "}▼
-            </Text>
+            <MaterialCommunityIcons
+              name="filter-variant"
+              size={16}
+              style={[
+                styles.controlBtnIcon,
+                activeFilterCount > 0 && styles.controlBtnTextActive,
+              ]}
+            />
           </TouchableOpacity>
 
           {(sortKey !== "nextPayment" || activeFilterCount > 0) && (
             <TouchableOpacity
               style={styles.clearAllBtn}
-              onPress={() => { setSortKey("nextPayment"); clearAllFilters(); }}
+              onPress={() => {
+                setSortKey("nextPayment");
+                clearAllFilters();
+              }}
             >
               <Text style={styles.clearAllText}>Reset</Text>
             </TouchableOpacity>
@@ -302,20 +377,36 @@ export default function SubscriptionsScreen({ navigation }) {
         {activeFilterCount > 0 && (
           <View style={styles.chipRow}>
             {sourceFilter !== "all" && (
-              <TouchableOpacity style={styles.chip} onPress={() => setSourceFilter("all")}>
+              <TouchableOpacity
+                style={styles.chip}
+                onPress={() => setSourceFilter("all")}
+              >
                 <Text style={styles.chipText}>
-                  {SOURCE_OPTIONS.find((o) => o.key === sourceFilter)?.label}{"  ✕"}
+                  {SOURCE_OPTIONS.find((o) => o.key === sourceFilter)?.label}
+                  {"  ✕"}
                 </Text>
               </TouchableOpacity>
             )}
             {freqFilter !== "all" && (
-              <TouchableOpacity style={styles.chip} onPress={() => setFreqFilter("all")}>
-                <Text style={styles.chipText}>{freqFilter}{"  ✕"}</Text>
+              <TouchableOpacity
+                style={styles.chip}
+                onPress={() => setFreqFilter("all")}
+              >
+                <Text style={styles.chipText}>
+                  {freqFilter}
+                  {"  ✕"}
+                </Text>
               </TouchableOpacity>
             )}
             {nameFilter && (
-              <TouchableOpacity style={styles.chip} onPress={() => setNameFilter("")}>
-                <Text style={styles.chipText}>{nameFilter}{"  ✕"}</Text>
+              <TouchableOpacity
+                style={styles.chip}
+                onPress={() => setNameFilter("")}
+              >
+                <Text style={styles.chipText}>
+                  {nameFilter}
+                  {"  ✕"}
+                </Text>
               </TouchableOpacity>
             )}
           </View>
@@ -330,7 +421,8 @@ export default function SubscriptionsScreen({ navigation }) {
       {/* Results count */}
       {normalizedSubscriptions.length > 0 && (
         <Text style={styles.resultsCount}>
-          {processedList.length} of {normalizedSubscriptions.length} subscriptions
+          {processedList.length} of {normalizedSubscriptions.length}{" "}
+          subscriptions
         </Text>
       )}
 
@@ -359,7 +451,9 @@ export default function SubscriptionsScreen({ navigation }) {
               <Text style={styles.subCat}>{sub.category}</Text>
             </View>
             <View style={{ alignItems: "flex-end" }}>
-              <Text style={styles.subAmount}>{`${sub.currency} ${sub.amount}`}</Text>
+              <Text
+                style={styles.subAmount}
+              >{`${sub.currency} ${sub.amount}`}</Text>
               <Text style={styles.subFreq}>{sub.freq}</Text>
             </View>
             <Text style={styles.chevron}>›</Text>
@@ -374,9 +468,16 @@ export default function SubscriptionsScreen({ navigation }) {
         transparent
         onRequestClose={() => setSortOpen(false)}
       >
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setSortOpen(false)}>
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setSortOpen(false)}
+        >
           <Animated.View
-            style={[styles.modalCard, { transform: [{ translateY: sortSwipe.translateY }] }]}
+            style={[
+              styles.modalCard,
+              { transform: [{ translateY: sortSwipe.translateY }] },
+            ]}
             {...sortSwipe.panHandlers}
           >
             <TouchableOpacity activeOpacity={1}>
@@ -388,9 +489,17 @@ export default function SubscriptionsScreen({ navigation }) {
                   <TouchableOpacity
                     key={opt.key}
                     style={[styles.modalItem, active && styles.modalItemActive]}
-                    onPress={() => { setSortKey(opt.key); setSortOpen(false); }}
+                    onPress={() => {
+                      setSortKey(opt.key);
+                      setSortOpen(false);
+                    }}
                   >
-                    <Text style={[styles.modalItemText, active && styles.modalItemTextActive]}>
+                    <Text
+                      style={[
+                        styles.modalItemText,
+                        active && styles.modalItemTextActive,
+                      ]}
+                    >
                       {opt.label}
                     </Text>
                     {active && <Text style={styles.checkmark}>✓</Text>}
@@ -407,113 +516,158 @@ export default function SubscriptionsScreen({ navigation }) {
         visible={filterOpen}
         animationType="slide"
         transparent
-        onRequestClose={() => { setFilterOpen(false); setNameSearch(""); }}
+        onRequestClose={() => {
+          setFilterOpen(false);
+          setNameSearch("");
+        }}
       >
         <TouchableOpacity
           style={styles.modalOverlay}
           activeOpacity={1}
-          onPress={() => { setFilterOpen(false); setNameSearch(""); }}
+          onPress={() => {
+            setFilterOpen(false);
+            setNameSearch("");
+          }}
         >
           <Animated.View
-            style={[styles.modalCard, { maxHeight: "80%", transform: [{ translateY: filterSwipe.translateY }] }]}
+            style={[
+              styles.modalCard,
+              {
+                maxHeight: "80%",
+                transform: [{ translateY: filterSwipe.translateY }],
+              },
+            ]}
             {...filterSwipe.panHandlers}
           >
-          <TouchableOpacity activeOpacity={1}>
-            <View style={styles.modalHandle} />
-            <View style={styles.modalTitleRow}>
-              <Text style={styles.modalTitle}>Filter</Text>
-              {activeFilterCount > 0 && (
-                <TouchableOpacity onPress={clearAllFilters}>
-                  <Text style={styles.clearFiltersLink}>Clear all</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {/* Source */}
-              <Text style={styles.filterGroupLabel}>Source</Text>
-              <View style={styles.pillGroup}>
-                {SOURCE_OPTIONS.map((opt) => {
-                  const active = sourceFilter === opt.key;
-                  return (
-                    <TouchableOpacity
-                      key={opt.key}
-                      style={[styles.pill, active && styles.pillActive]}
-                      onPress={() => setSourceFilter(opt.key)}
-                    >
-                      <Text style={[styles.pillText, active && styles.pillTextActive]}>
-                        {opt.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              {/* Frequency */}
-              <Text style={styles.filterGroupLabel}>Frequency</Text>
-              <View style={styles.pillGroup}>
-                {FREQ_OPTIONS.map((opt) => {
-                  const active = freqFilter === opt.key;
-                  return (
-                    <TouchableOpacity
-                      key={opt.key}
-                      style={[styles.pill, active && styles.pillActive]}
-                      onPress={() => setFreqFilter(opt.key)}
-                    >
-                      <Text style={[styles.pillText, active && styles.pillTextActive]}>
-                        {opt.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              {/* Name */}
-              <Text style={styles.filterGroupLabel}>Subscription name</Text>
-              <View style={styles.modalSearchBox}>
-                <TextInput
-                  style={styles.modalSearchInput}
-                  placeholder="Search names..."
-                  placeholderTextColor="#aaa"
-                  value={nameSearch}
-                  onChangeText={setNameSearch}
-                />
-              </View>
-              <TouchableOpacity
-                style={[styles.modalItem, !nameFilter && styles.modalItemActive]}
-                onPress={() => setNameFilter("")}
-              >
-                <Text style={[styles.modalItemText, !nameFilter && styles.modalItemTextActive]}>
-                  All subscriptions
-                </Text>
-                {!nameFilter && <Text style={styles.checkmark}>✓</Text>}
-              </TouchableOpacity>
-              {filteredNameOptions.map((name) => {
-                const active = nameFilter.toLowerCase() === name.toLowerCase();
-                return (
-                  <TouchableOpacity
-                    key={name}
-                    style={[styles.modalItem, active && styles.modalItemActive]}
-                    onPress={() => { setNameFilter(name); setNameSearch(""); }}
-                  >
-                    <Text style={[styles.modalItemText, active && styles.modalItemTextActive]}>
-                      {name}
-                    </Text>
-                    {active && <Text style={styles.checkmark}>✓</Text>}
+            <TouchableOpacity activeOpacity={1}>
+              <View style={styles.modalHandle} />
+              <View style={styles.modalTitleRow}>
+                <Text style={styles.modalTitle}>Filter</Text>
+                {activeFilterCount > 0 && (
+                  <TouchableOpacity onPress={clearAllFilters}>
+                    <Text style={styles.clearFiltersLink}>Clear all</Text>
                   </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+                )}
+              </View>
 
-            <TouchableOpacity
-              style={styles.applyBtn}
-              onPress={() => { setFilterOpen(false); setNameSearch(""); }}
-            >
-              <Text style={styles.applyBtnText}>
-                Apply{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
-              </Text>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {/* Source */}
+                <Text style={styles.filterGroupLabel}>Source</Text>
+                <View style={styles.pillGroup}>
+                  {SOURCE_OPTIONS.map((opt) => {
+                    const active = sourceFilter === opt.key;
+                    return (
+                      <TouchableOpacity
+                        key={opt.key}
+                        style={[styles.pill, active && styles.pillActive]}
+                        onPress={() => setSourceFilter(opt.key)}
+                      >
+                        <Text
+                          style={[
+                            styles.pillText,
+                            active && styles.pillTextActive,
+                          ]}
+                        >
+                          {opt.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Frequency */}
+                <Text style={styles.filterGroupLabel}>Frequency</Text>
+                <View style={styles.pillGroup}>
+                  {FREQ_OPTIONS.map((opt) => {
+                    const active = freqFilter === opt.key;
+                    return (
+                      <TouchableOpacity
+                        key={opt.key}
+                        style={[styles.pill, active && styles.pillActive]}
+                        onPress={() => setFreqFilter(opt.key)}
+                      >
+                        <Text
+                          style={[
+                            styles.pillText,
+                            active && styles.pillTextActive,
+                          ]}
+                        >
+                          {opt.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Name */}
+                <Text style={styles.filterGroupLabel}>Subscription name</Text>
+                <View style={styles.modalSearchBox}>
+                  <TextInput
+                    style={styles.modalSearchInput}
+                    placeholder="Search names..."
+                    placeholderTextColor="#aaa"
+                    value={nameSearch}
+                    onChangeText={setNameSearch}
+                  />
+                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.modalItem,
+                    !nameFilter && styles.modalItemActive,
+                  ]}
+                  onPress={() => setNameFilter("")}
+                >
+                  <Text
+                    style={[
+                      styles.modalItemText,
+                      !nameFilter && styles.modalItemTextActive,
+                    ]}
+                  >
+                    All subscriptions
+                  </Text>
+                  {!nameFilter && <Text style={styles.checkmark}>✓</Text>}
+                </TouchableOpacity>
+                {filteredNameOptions.map((name) => {
+                  const active =
+                    nameFilter.toLowerCase() === name.toLowerCase();
+                  return (
+                    <TouchableOpacity
+                      key={name}
+                      style={[
+                        styles.modalItem,
+                        active && styles.modalItemActive,
+                      ]}
+                      onPress={() => {
+                        setNameFilter(name);
+                        setNameSearch("");
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.modalItemText,
+                          active && styles.modalItemTextActive,
+                        ]}
+                      >
+                        {name}
+                      </Text>
+                      {active && <Text style={styles.checkmark}>✓</Text>}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              <TouchableOpacity
+                style={styles.applyBtn}
+                onPress={() => {
+                  setFilterOpen(false);
+                  setNameSearch("");
+                }}
+              >
+                <Text style={styles.applyBtnText}>
+                  Apply{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+                </Text>
+              </TouchableOpacity>
             </TouchableOpacity>
-          </TouchableOpacity>
           </Animated.View>
         </TouchableOpacity>
       </Modal>
@@ -528,7 +682,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
   },
-  pageTitle: { fontSize: 26, fontWeight: "700", color: "#1a1a1a", marginBottom: 12 },
+  pageTitle: {
+    fontSize: 26,
+    fontWeight: "700",
+    color: "#1a1a1a",
+    marginBottom: 12,
+  },
 
   section: {
     backgroundColor: "#fff",
@@ -536,7 +695,12 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 10,
   },
-  sectionTitle: { fontSize: 16, fontWeight: "600", color: "#1a1a1a", marginBottom: 10 },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1a1a1a",
+    marginBottom: 10,
+  },
 
   searchBox: {
     flexDirection: "row",
@@ -566,6 +730,7 @@ const styles = StyleSheet.create({
   controlBtnText: { fontSize: 13, fontWeight: "500", color: "#444" },
   controlBtnTextActive: { color: "#5B3FD9" },
   controlBtnChevron: { fontSize: 11, color: "#888" },
+  controlBtnIcon: { color: "#888", marginLeft: 6 },
   filterBadge: {
     backgroundColor: "#5B3FD9",
     borderRadius: 10,
@@ -601,7 +766,12 @@ const styles = StyleSheet.create({
 
   resultsCount: { fontSize: 12, color: "#888", marginBottom: 8, marginLeft: 2 },
 
-  emptyState: { backgroundColor: "#fff", borderRadius: 12, padding: 16, marginBottom: 8 },
+  emptyState: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 8,
+  },
   emptyTitle: { fontSize: 14, fontWeight: "600", color: "#1a1a1a" },
   emptySub: { fontSize: 12, color: "#888", marginTop: 4 },
 

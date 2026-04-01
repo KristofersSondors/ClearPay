@@ -423,6 +423,20 @@ function detectFrequency(diffDays) {
   return null;
 }
 
+function getMonthlyMultiplierForFrequency(frequency) {
+  const normalized = String(frequency || "").toLowerCase();
+
+  if (normalized === "weekly") {
+    return 52 / 12;
+  }
+
+  if (normalized === "yearly") {
+    return 1 / 12;
+  }
+
+  return 1;
+}
+
 function detectSubscriptionsFromTransactions(transactions, bankId, sessionId) {
   const debits = transactions.filter((transaction) => {
     const indicator = String(
@@ -1069,26 +1083,31 @@ app.get("/api/banking/subscriptions-detected", async (req, res) => {
   const { data, error } = await supabase
     .from("detected_subscriptions")
     .select(
-      "subscription_id, name, amount, currency, frequency, next_payment, bank_id, imported_at, updated_at, monthly_amount",
+      "subscription_id, name, amount, currency, frequency, next_payment, bank_id, imported_at, updated_at",
     )
     .eq("user_id", userId);
   if (error) {
     return res.status(500).json({ error: error.message });
   }
   // Map to frontend format
-  const subscriptions = (data || []).map((row) => ({
-    id: row.subscription_id,
-    name: row.name,
-    amountValue: row.amount,
-    currency: row.currency,
-    frequency: row.frequency,
-    nextPaymentIso: row.next_payment,
-    bankId: row.bank_id,
-    importedAt: row.imported_at,
-    updatedAt: row.updated_at,
-    monthlyAmount: row.monthly_amount,
-    source: "bank",
-  }));
+  const subscriptions = (data || []).map((row) => {
+    const amountValue = Number(row.amount || 0);
+    const monthlyMultiplier = getMonthlyMultiplierForFrequency(row.frequency);
+
+    return {
+      id: row.subscription_id,
+      name: row.name,
+      amountValue,
+      currency: row.currency,
+      frequency: row.frequency,
+      nextPaymentIso: row.next_payment,
+      bankId: row.bank_id,
+      importedAt: row.imported_at,
+      updatedAt: row.updated_at,
+      monthlyAmount: Number((amountValue * monthlyMultiplier).toFixed(2)),
+      source: "bank",
+    };
+  });
   return res.json({ subscriptions });
 });
 
@@ -1108,18 +1127,6 @@ app.put("/api/banking/subscriptions-detected/:id", async (req, res) => {
   }
   const { name, amount, currency, frequency, nextPaymentIso } = req.body || {};
 
-  // Calculate monthlyMultiplier based on frequency
-  let monthlyMultiplier = 1;
-  if (frequency === "Weekly") monthlyMultiplier = 52 / 12;
-  else if (frequency === "Monthly") monthlyMultiplier = 1;
-  else if (frequency === "Yearly") monthlyMultiplier = 1 / 12;
-
-  // Calculate monthlyAmount
-  let monthlyAmount = null;
-  if (typeof amount === "number" && !isNaN(amount)) {
-    monthlyAmount = Number((amount * monthlyMultiplier).toFixed(2));
-  }
-
   // Upsert into Supabase
   const { error } = await supabase.from("detected_subscriptions").upsert(
     [
@@ -1131,7 +1138,6 @@ app.put("/api/banking/subscriptions-detected/:id", async (req, res) => {
         currency,
         frequency,
         next_payment: nextPaymentIso,
-        monthly_amount: monthlyAmount,
         updated_at: new Date().toISOString(),
       },
     ],

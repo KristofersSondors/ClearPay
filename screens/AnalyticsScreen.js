@@ -1,8 +1,21 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Dimensions } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Dimensions,
+  TouchableOpacity,
+} from "react-native";
 import { LineChart } from "react-native-chart-kit";
 import Svg, { G, Path } from "react-native-svg";
 import { getManualSubscriptions } from "../src/lib/manualSubscriptions";
+import {
+  getDetectedBankSubscriptions,
+  getLinkedBanks,
+} from "../src/lib/bankingApi";
+import { getSupabaseClient, hasSupabaseConfig } from "../src/lib/supabase";
+import AsyncStorage from "../src/lib/asyncStorage";
 import {
   getCurrencyMeta,
   getPreferredCurrency,
@@ -11,8 +24,32 @@ import {
   convertCurrencyAmount,
   getUsdExchangeRates,
 } from "../src/lib/currencyConversion";
+import { mergeSubscriptions } from "../src/lib/transactionMetrics";
 
 const W = Dimensions.get("window").width - 32;
+const LOCAL_BANKING_USER_ID_KEY = "clearpay_local_banking_user_id";
+
+function resolveSubscriptionStartDate(item) {
+  const candidates = [
+    item.createdAt,
+    item.importedAt,
+    item.updatedAt,
+    item.nextPaymentIso,
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue;
+    }
+
+    const parsed = new Date(candidate);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
 
 function monthLabel(date) {
   return date.toLocaleDateString("en-US", { month: "short" });
@@ -22,7 +59,8 @@ function addMonths(date, months) {
   return new Date(date.getFullYear(), date.getMonth() + months, 1);
 }
 
-const DonutChart = ({ data }) => {
+const DonutChart = ({ data, currencyCode }) => {
+  const [selectedLabel, setSelectedLabel] = useState("");
   const total = data.reduce((s, d) => s + d.value, 0);
   const size = 160;
   const cx = size / 2;
@@ -34,45 +72,86 @@ const DonutChart = ({ data }) => {
     return <Text style={styles.emptyChartText}>No subscription data yet.</Text>;
   }
 
+  const chartData = data.filter((item) => item.value > 0);
+  const selected =
+    chartData.find((item) => item.label === selectedLabel) ||
+    chartData[0] ||
+    null;
+
   let cumulative = 0;
-  const slices = data
-    .filter((item) => item.value > 0)
-    .map((d) => {
-      const startAngle = (cumulative / total) * 2 * Math.PI - Math.PI / 2;
-      cumulative += d.value;
-      const endAngle = (cumulative / total) * 2 * Math.PI - Math.PI / 2;
-      const x1 = cx + r * Math.cos(startAngle);
-      const y1 = cy + r * Math.sin(startAngle);
-      const x2 = cx + r * Math.cos(endAngle);
-      const y2 = cy + r * Math.sin(endAngle);
-      const ix1 = cx + innerR * Math.cos(endAngle);
-      const iy1 = cy + innerR * Math.sin(endAngle);
-      const ix2 = cx + innerR * Math.cos(startAngle);
-      const iy2 = cy + innerR * Math.sin(startAngle);
-      const large = endAngle - startAngle > Math.PI ? 1 : 0;
-      return {
-        path: `M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} L ${ix1} ${iy1} A ${innerR} ${innerR} 0 ${large} 0 ${ix2} ${iy2} Z`,
-        color: d.color,
-        label: d.label,
-      };
-    });
+  const slices = chartData.map((d) => {
+    const startAngle = (cumulative / total) * 2 * Math.PI - Math.PI / 2;
+    cumulative += d.value;
+    const endAngle = (cumulative / total) * 2 * Math.PI - Math.PI / 2;
+    const isSelected = d.label === selected?.label;
+    const outerRadius = isSelected ? r + 5 : r;
+    const midAngle = (startAngle + endAngle) / 2;
+    const pull = isSelected ? 4 : 0;
+    const dx = pull * Math.cos(midAngle);
+    const dy = pull * Math.sin(midAngle);
+
+    const x1 = cx + dx + outerRadius * Math.cos(startAngle);
+    const y1 = cy + dy + outerRadius * Math.sin(startAngle);
+    const x2 = cx + dx + outerRadius * Math.cos(endAngle);
+    const y2 = cy + dy + outerRadius * Math.sin(endAngle);
+    const ix1 = cx + dx + innerR * Math.cos(endAngle);
+    const iy1 = cy + dy + innerR * Math.sin(endAngle);
+    const ix2 = cx + dx + innerR * Math.cos(startAngle);
+    const iy2 = cy + dy + innerR * Math.sin(startAngle);
+    const large = endAngle - startAngle > Math.PI ? 1 : 0;
+    return {
+      path: `M ${x1} ${y1} A ${outerRadius} ${outerRadius} 0 ${large} 1 ${x2} ${y2} L ${ix1} ${iy1} A ${innerR} ${innerR} 0 ${large} 0 ${ix2} ${iy2} Z`,
+      color: d.color,
+      label: d.label,
+      value: d.value,
+      isSelected,
+    };
+  });
 
   return (
     <View style={{ alignItems: "center" }}>
       <Svg width={size} height={size}>
         <G>
           {slices.map((s, i) => (
-            <Path key={`${s.label}-${i}`} d={s.path} fill={s.color} />
+            <Path
+              key={`${s.label}-${i}`}
+              d={s.path}
+              fill={s.color}
+              fillOpacity={s.isSelected ? 1 : 0.8}
+              onPress={() => setSelectedLabel(s.label)}
+            />
           ))}
         </G>
       </Svg>
+      {selected ? (
+        <View style={styles.chartCenterInfo}>
+          <Text style={styles.chartCenterLabel}>{selected.label}</Text>
+          <Text style={styles.chartCenterValue}>
+            {currencyCode} {selected.value.toFixed(2)}
+          </Text>
+          <Text style={styles.chartCenterSub}>
+            {((selected.value / total) * 100).toFixed(0)}% of monthly spend
+          </Text>
+        </View>
+      ) : null}
       <View style={styles.legend}>
-        {data.map((d) => (
-          <View key={d.label} style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: d.color }]} />
-            <Text style={styles.legendText}>{d.label}</Text>
-          </View>
-        ))}
+        {data.map((d) => {
+          const isActive = d.label === selected?.label;
+          return (
+            <TouchableOpacity
+              key={d.label}
+              style={[styles.legendItem, isActive && styles.legendItemActive]}
+              onPress={() => setSelectedLabel(d.label)}
+            >
+              <View style={[styles.legendDot, { backgroundColor: d.color }]} />
+              <Text
+                style={[styles.legendText, isActive && styles.legendTextActive]}
+              >
+                {d.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
     </View>
   );
@@ -80,8 +159,47 @@ const DonutChart = ({ data }) => {
 
 export default function AnalyticsScreen({ navigation }) {
   const [manualSubscriptions, setManualSubscriptions] = useState([]);
+  const [bankSubscriptions, setBankSubscriptions] = useState([]);
   const [preferredCurrency, setPreferredCurrency] = useState("USD");
   const [usdRates, setUsdRates] = useState({ USD: 1, EUR: 0.92, GBP: 0.79 });
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [frequencyFilter, setFrequencyFilter] = useState("all");
+
+  const resolveUserId = async () => {
+    if (hasSupabaseConfig) {
+      const supabase = getSupabaseClient();
+      const { data } = await supabase.auth.getUser();
+      if (data?.user?.id) {
+        return data.user.id;
+      }
+    }
+
+    return await AsyncStorage.getItem(LOCAL_BANKING_USER_ID_KEY);
+  };
+
+  const toMonthlyAmount = (item) => {
+    const direct = Number(item.monthlyAmount);
+    if (!Number.isNaN(direct) && direct > 0) {
+      return direct;
+    }
+
+    const amount =
+      item.amountValue !== undefined
+        ? Number(item.amountValue)
+        : Number(item.amount);
+    const safeAmount = Number.isNaN(amount) ? 0 : amount;
+    const frequency = item.frequency || "Monthly";
+
+    if (frequency === "Weekly") {
+      return (safeAmount * 52) / 12;
+    }
+
+    if (frequency === "Yearly") {
+      return safeAmount / 12;
+    }
+
+    return safeAmount;
+  };
 
   useEffect(() => {
     const loadAnalyticsData = async () => {
@@ -93,6 +211,31 @@ export default function AnalyticsScreen({ navigation }) {
       setManualSubscriptions(stored);
       setPreferredCurrency(preferred);
       setUsdRates(rates);
+
+      try {
+        const userId = await resolveUserId();
+        if (!userId) {
+          setBankSubscriptions([]);
+          return;
+        }
+
+        const linked = await getLinkedBanks(userId);
+        const linkedBankIds = Array.isArray(linked?.linkedBankIds)
+          ? linked.linkedBankIds
+          : [];
+
+        if (linkedBankIds.length === 0) {
+          setBankSubscriptions([]);
+          return;
+        }
+
+        const bankSubs = await getDetectedBankSubscriptions(userId);
+        setBankSubscriptions(
+          Array.isArray(bankSubs?.subscriptions) ? bankSubs.subscriptions : [],
+        );
+      } catch {
+        setBankSubscriptions([]);
+      }
     };
 
     loadAnalyticsData();
@@ -102,6 +245,26 @@ export default function AnalyticsScreen({ navigation }) {
   }, [navigation]);
 
   const preferredCurrencyMeta = getCurrencyMeta(preferredCurrency);
+
+  const combinedSubscriptions = useMemo(
+    () => mergeSubscriptions(manualSubscriptions, bankSubscriptions),
+    [manualSubscriptions, bankSubscriptions],
+  );
+
+  const filteredSubscriptions = useMemo(() => {
+    return combinedSubscriptions.filter((item) => {
+      if (sourceFilter !== "all" && item.source !== sourceFilter) {
+        return false;
+      }
+
+      const frequency = item.frequency || "Monthly";
+      if (frequencyFilter !== "all" && frequency !== frequencyFilter) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [combinedSubscriptions, sourceFilter, frequencyFilter]);
 
   const lineData = useMemo(() => {
     const monthsBack = 5;
@@ -119,8 +282,8 @@ export default function AnalyticsScreen({ navigation }) {
     const dataset = monthStarts.map((monthStart) => {
       const monthEnd = addMonths(monthStart, 1);
 
-      return manualSubscriptions.reduce((sum, item) => {
-        const createdAt = item.createdAt ? new Date(item.createdAt) : null;
+      return filteredSubscriptions.reduce((sum, item) => {
+        const createdAt = resolveSubscriptionStartDate(item);
         if (
           !createdAt ||
           Number.isNaN(createdAt.getTime()) ||
@@ -132,7 +295,7 @@ export default function AnalyticsScreen({ navigation }) {
         return (
           sum +
           convertCurrencyAmount(
-            Number(item.monthlyAmount || 0),
+            toMonthlyAmount(item),
             item.currency || "USD",
             preferredCurrency,
             usdRates,
@@ -145,7 +308,7 @@ export default function AnalyticsScreen({ navigation }) {
       labels,
       datasets: [{ data: dataset.map((value) => Number(value.toFixed(2))) }],
     };
-  }, [manualSubscriptions, preferredCurrency, usdRates]);
+  }, [filteredSubscriptions, preferredCurrency, usdRates]);
 
   const spendByFrequency = useMemo(() => {
     const base = {
@@ -154,12 +317,12 @@ export default function AnalyticsScreen({ navigation }) {
       Yearly: 0,
     };
 
-    manualSubscriptions.forEach((item) => {
+    filteredSubscriptions.forEach((item) => {
       const key = ["Weekly", "Monthly", "Yearly"].includes(item.frequency)
         ? item.frequency
         : "Monthly";
       base[key] += convertCurrencyAmount(
-        Number(item.monthlyAmount || 0),
+        toMonthlyAmount(item),
         item.currency || "USD",
         preferredCurrency,
         usdRates,
@@ -171,7 +334,7 @@ export default function AnalyticsScreen({ navigation }) {
       { label: "Monthly", value: base.Monthly, color: "#22C55E" },
       { label: "Yearly", value: base.Yearly, color: "#EC4899" },
     ];
-  }, [manualSubscriptions, preferredCurrency, usdRates]);
+  }, [filteredSubscriptions, preferredCurrency, usdRates]);
 
   return (
     <ScrollView
@@ -179,6 +342,65 @@ export default function AnalyticsScreen({ navigation }) {
       contentContainerStyle={{ paddingBottom: 30 }}
     >
       <Text style={styles.pageTitle}>Analytics</Text>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Filters</Text>
+
+        <Text style={styles.filterLabel}>Source</Text>
+        <View style={styles.filterRow}>
+          {[
+            { key: "all", label: "All" },
+            { key: "manual", label: "Manual" },
+            { key: "bank", label: "Bank" },
+          ].map((option) => {
+            const active = sourceFilter === option.key;
+            return (
+              <TouchableOpacity
+                key={option.key}
+                style={[styles.filterChip, active && styles.filterChipActive]}
+                onPress={() => setSourceFilter(option.key)}
+              >
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    active && styles.filterChipTextActive,
+                  ]}
+                >
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <Text style={styles.filterLabel}>Frequency</Text>
+        <View style={styles.filterRow}>
+          {["all", "Weekly", "Monthly", "Yearly"].map((frequency) => {
+            const active = frequencyFilter === frequency;
+            return (
+              <TouchableOpacity
+                key={frequency}
+                style={[styles.filterChip, active && styles.filterChipActive]}
+                onPress={() => setFrequencyFilter(frequency)}
+              >
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    active && styles.filterChipTextActive,
+                  ]}
+                >
+                  {frequency === "all" ? "All" : frequency}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <Text style={styles.filterHint}>
+          Showing {filteredSubscriptions.length} of{" "}
+          {combinedSubscriptions.length} subscriptions
+        </Text>
+      </View>
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Monthly Spend Trend</Text>
@@ -204,7 +426,10 @@ export default function AnalyticsScreen({ navigation }) {
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Spend by Frequency (Monthly Basis)</Text>
-        <DonutChart data={spendByFrequency} />
+        <DonutChart
+          data={spendByFrequency}
+          currencyCode={preferredCurrencyMeta.code}
+        />
       </View>
     </ScrollView>
   );
@@ -239,11 +464,70 @@ const styles = StyleSheet.create({
     color: "#1a1a1a",
     marginBottom: 12,
   },
+  filterLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#666",
+    marginTop: 2,
+    marginBottom: 8,
+  },
+  filterRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 10,
+  },
+  filterChip: {
+    borderWidth: 1,
+    borderColor: "#E5E5E5",
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: "#fff",
+  },
+  filterChipActive: {
+    borderColor: "#5B3FD9",
+    backgroundColor: "#F0EEFF",
+  },
+  filterChipText: {
+    fontSize: 12,
+    color: "#444",
+    fontWeight: "500",
+  },
+  filterChipTextActive: {
+    color: "#5B3FD9",
+    fontWeight: "600",
+  },
+  filterHint: {
+    fontSize: 12,
+    color: "#888",
+    marginTop: 2,
+  },
   emptyChartText: {
     fontSize: 13,
     color: "#777",
     textAlign: "center",
     padding: 12,
+  },
+  chartCenterInfo: {
+    marginTop: 4,
+    alignItems: "center",
+  },
+  chartCenterLabel: {
+    fontSize: 13,
+    color: "#666",
+    fontWeight: "600",
+  },
+  chartCenterValue: {
+    fontSize: 16,
+    color: "#1a1a1a",
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  chartCenterSub: {
+    fontSize: 12,
+    color: "#888",
+    marginTop: 2,
   },
   legend: {
     flexDirection: "row",
@@ -252,7 +536,18 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     justifyContent: "center",
   },
-  legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  legendItemActive: {
+    backgroundColor: "#F5F5F7",
+  },
   legendDot: { width: 10, height: 10, borderRadius: 5 },
   legendText: { fontSize: 12, color: "#555" },
+  legendTextActive: { color: "#111", fontWeight: "600" },
 });
