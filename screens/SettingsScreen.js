@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Alert,
   TextInput,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "../src/lib/asyncStorage";
@@ -166,6 +167,20 @@ export default function SettingsScreen({ navigation }) {
   };
 
   const handleRemoveBank = async (bankId) => {
+    const confirmed =
+      Platform.OS === "web"
+        ? window.confirm("Are you sure you want to unlink this bank?")
+        : await new Promise((resolve) =>
+            Alert.alert(
+              "Remove Bank",
+              "Are you sure you want to unlink this bank?",
+              [
+                { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+                { text: "Remove", style: "destructive", onPress: () => resolve(true) },
+              ],
+            ),
+          );
+    if (!confirmed) return;
     try {
       await removeLinkedBank(currentUserId, bankId);
       await loadLinkedBanks(currentUserId);
@@ -382,7 +397,6 @@ export default function SettingsScreen({ navigation }) {
                           }
                           disabled={
                             loadingBanks ||
-                            isConnected ||
                             Boolean(linkingBankId)
                           }
                         >
@@ -412,21 +426,7 @@ export default function SettingsScreen({ navigation }) {
                               </View>
                               <TouchableOpacity
                                 style={styles.removeBankBtn}
-                                onPress={() =>
-                                  Alert.alert(
-                                    "Remove Bank",
-                                    "Are you sure you want to unlink this bank?",
-                                    [
-                                      { text: "Cancel", style: "cancel" },
-                                      {
-                                        text: "Remove",
-                                        style: "destructive",
-                                        onPress: () =>
-                                          handleRemoveBank(bank.id),
-                                      },
-                                    ],
-                                  )
-                                }
+                                onPress={() => handleRemoveBank(bank.id)}
                               >
                                 <Text style={styles.removeBankText}>
                                   Remove
