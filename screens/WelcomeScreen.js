@@ -26,8 +26,8 @@ export default function WelcomeScreen({ navigation }) {
           <View style={styles.logoBox}>
           <Image
             source={require("../Logo.png")}
-            style={{ width: 56, height: 56 }}
-            resizeMode="contain"
+            style={{ width: 80, height: 80 }}
+            resizeMode="cover"
           />
         </View>
 
@@ -106,9 +106,6 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 22,
-    backgroundColor: "#5B3FD9",
-    justifyContent: "center",
-    alignItems: "center",
     marginBottom: 28,
     shadowColor: "#5B3FD9",
     shadowOffset: { width: 0, height: 8 },
