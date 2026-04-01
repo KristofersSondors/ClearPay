@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -6,8 +6,12 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
   Alert,
+  TextInput,
 } from "react-native";
+import AsyncStorage from "../src/lib/asyncStorage";
+import * as WebBrowser from "expo-web-browser";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   getAuthenticatedProfile,
@@ -18,17 +22,56 @@ import {
   getPreferredCurrency,
   getCurrencyPreferenceLabel,
 } from "../src/lib/currencyPreferences";
+import {
+  getBackendHealthUrl,
+  getBankProviders,
+  getLinkedBanks,
+  startBankLink,
+  removeLinkedBank,
+} from "../src/lib/bankingApi";
 
-const BANKS = [
-  { id: "swedbank", name: "Swedbank", color: "#FF6600" },
-  { id: "seb", name: "S|E|B", color: "#000" },
-  { id: "revolut", name: "Revolut", color: "#000" },
-  { id: "luminor", name: "Luminor", color: "#1A3A5C" },
-];
+WebBrowser.maybeCompleteAuthSession();
+
+const LOCAL_BANKING_USER_ID_KEY = "clearpay_local_banking_user_id";
+
+const COUNTRY_NAMES = {
+  SE: "Sweden",
+  FI: "Finland",
+  LT: "Lithuania",
+  LV: "Latvia",
+  EE: "Estonia",
+  DE: "Germany",
+  AT: "Austria",
+  BE: "Belgium",
+  BG: "Bulgaria",
+  HR: "Croatia",
+  CY: "Cyprus",
+  CZ: "Czechia",
+  DK: "Denmark",
+  GR: "Greece",
+  ES: "Spain",
+  FR: "France",
+  GB: "United Kingdom",
+  HU: "Hungary",
+  IE: "Ireland",
+  IT: "Italy",
+  NL: "Netherlands",
+  PL: "Poland",
+  PT: "Portugal",
+  RO: "Romania",
+  SI: "Slovenia",
+  SK: "Slovakia",
+};
 
 export default function SettingsScreen({ navigation }) {
-  const [connected, setConnected] = useState(["swedbank"]);
+  const [banks, setBanks] = useState([]);
+  const [connected, setConnected] = useState([]);
+  const [currentUserId, setCurrentUserId] = useState("");
+  const [loadingBanks, setLoadingBanks] = useState(true);
+  const [linkingBankId, setLinkingBankId] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [preferredCurrency, setPreferredCurrency] = useState("USD");
+  const [showAddBankMode, setShowAddBankMode] = useState(false);
   const [profile, setProfile] = useState({
     name: "Your Profile",
     email: "Sign in to load your account",
@@ -37,11 +80,102 @@ export default function SettingsScreen({ navigation }) {
   });
   const [profileError, setProfileError] = useState("");
   const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
+  const appRedirectUrl = "clearpay://bank/callback";
 
-  const toggle = (id) =>
-    setConnected((prev) =>
-      prev.includes(id) ? prev.filter((b) => b !== id) : [...prev, id],
+  const resolveCurrentUserId = async () => {
+    if (hasSupabaseConfig) {
+      const supabase = getSupabaseClient();
+      const { data, error } = await supabase.auth.getUser();
+      if (!error && data?.user?.id) {
+        return data.user.id;
+      }
+    }
+
+    const existing = await AsyncStorage.getItem(LOCAL_BANKING_USER_ID_KEY);
+    if (existing) {
+      return existing;
+    }
+
+    const generated = `guest-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    await AsyncStorage.setItem(LOCAL_BANKING_USER_ID_KEY, generated);
+    return generated;
+  };
+
+  const loadLinkedBanks = async (userId) => {
+    const linkedResponse = await getLinkedBanks(userId);
+    setConnected(
+      Array.isArray(linkedResponse?.linkedBankIds)
+        ? linkedResponse.linkedBankIds
+        : [],
     );
+  };
+
+  const loadBankProviders = async () => {
+    const response = await getBankProviders();
+    const providers = Array.isArray(response?.providers)
+      ? response.providers
+      : [];
+    setBanks(providers);
+  };
+
+  const handleBankConnect = async (bank) => {
+    if (!currentUserId || linkingBankId) {
+      return;
+    }
+
+    try {
+      setLinkingBankId(bank.id);
+
+      const { authorizationUrl } = await startBankLink({
+        userId: currentUserId,
+        bankId: bank.id,
+        appRedirectUrl,
+        aspsp: bank.aspsp,
+      });
+
+      const authResult = await WebBrowser.openAuthSessionAsync(
+        authorizationUrl,
+        appRedirectUrl,
+      );
+
+      if (authResult.type === "success") {
+        await loadLinkedBanks(currentUserId);
+      }
+    } catch (error) {
+      Alert.alert("Bank linking failed", error?.message || "Please try again.");
+    } finally {
+      setLinkingBankId("");
+    }
+  };
+
+  const handleBankDisconnect = async (bank) => {
+    if (!currentUserId || !connected.includes(bank.id)) {
+      return;
+    }
+
+    try {
+      await removeLinkedBank(currentUserId, bank.id);
+      setConnected(connected.filter((bankId) => bankId !== bank.id));
+    } catch (error) {
+      Alert.alert(
+        "Bank unlinking failed",
+        error?.message || "Please try again.",
+      );
+    }
+  };
+
+  const handleRemoveBank = async (bankId) => {
+    try {
+      await removeLinkedBank(currentUserId, bankId);
+      await loadLinkedBanks(currentUserId);
+      Alert.alert("Bank removed", "The bank has been unlinked.");
+    } catch (error) {
+      Alert.alert(
+        "Failed to remove bank",
+        error.message || "Please try again.",
+      );
+    }
+  };
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -73,9 +207,30 @@ export default function SettingsScreen({ navigation }) {
       setProfileError("");
     };
 
-    loadProfile();
+    const loadBanks = async () => {
+      try {
+        setLoadingBanks(true);
+        const userId = await resolveCurrentUserId();
+        setCurrentUserId(userId);
+        await loadBankProviders();
+        await loadLinkedBanks(userId);
+      } catch {
+        Alert.alert(
+          "Banking service unavailable",
+          `Make sure backend is running (${getBackendHealthUrl()}).`,
+        );
+      } finally {
+        setLoadingBanks(false);
+      }
+    };
 
-    const unsubscribe = navigation.addListener("focus", loadProfile);
+    loadProfile();
+    loadBanks();
+
+    const unsubscribe = navigation.addListener("focus", () => {
+      loadProfile();
+      loadBanks();
+    });
 
     return unsubscribe;
   }, [navigation]);
@@ -96,6 +251,39 @@ export default function SettingsScreen({ navigation }) {
 
     navigation.replace("Welcome");
   };
+
+  // Search and filter logic
+  const filteredBanks = useMemo(() => {
+    // If showing add bank mode, show all banks (optional: exclude already connected)
+    const banksToFilter = showAddBankMode
+      ? banks
+      : banks.filter((bank) => connected.includes(bank.id));
+
+    if (!searchQuery.trim()) {
+      return banksToFilter;
+    }
+    const query = searchQuery.toLowerCase();
+    return banksToFilter.filter((bank) => {
+      const countryName = COUNTRY_NAMES[bank.country] || bank.country;
+      return (
+        bank.name.toLowerCase().includes(query) ||
+        bank.country.toLowerCase().includes(query) ||
+        countryName.toLowerCase().includes(query)
+      );
+    });
+  }, [banks, searchQuery, connected, showAddBankMode]);
+
+  // Group banks by name for separator logic
+  const banksByName = useMemo(() => {
+    const grouped = {};
+    filteredBanks.forEach((bank) => {
+      if (!grouped[bank.name]) {
+        grouped[bank.name] = [];
+      }
+      grouped[bank.name].push(bank);
+    });
+    return grouped;
+  }, [filteredBanks]);
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -148,31 +336,254 @@ export default function SettingsScreen({ navigation }) {
         {/* Connected Banks */}
         <Text style={styles.sectionLabel}>Connected Banks</Text>
         <View style={styles.card}>
-          <Text style={styles.bankDesc}>
-            Link your bank accounts to automatically detect subscriptions and
-            recurring payments. We use bank-level 256-bit encryption.
-          </Text>
-          {BANKS.map((bank) => {
-            const isConnected = connected.includes(bank.id);
-            return (
-              <TouchableOpacity
-                key={bank.id}
-                style={[styles.bankRow, isConnected && styles.bankRowConnected]}
-                onPress={() => toggle(bank.id)}
-              >
-                <Text style={[styles.bankName, { color: bank.color }]}>
-                  {bank.name}
-                </Text>
-                {isConnected ? (
-                  <View style={styles.connectedBadge}>
-                    <Text style={styles.connectedText}>✓ Connected</Text>
+          {!showAddBankMode ? (
+            <>
+              <Text style={styles.bankDesc}>
+                Link your bank accounts to automatically detect subscriptions
+                and recurring payments. We use bank-level 256-bit encryption.
+              </Text>
+
+              {loadingBanks ? (
+                <View style={styles.loadingBanksWrap}>
+                  <ActivityIndicator size="small" color="#5B3FD9" />
+                  <Text style={styles.loadingBanksText}>
+                    Loading bank links...
+                  </Text>
+                </View>
+              ) : null}
+
+              {!loadingBanks && connected.length === 0 ? (
+                <View style={styles.noBanksContainerSettings}>
+                  <Text style={styles.noBanksText}>No banks connected yet</Text>
+                </View>
+              ) : (
+                Object.entries(banksByName).map(([name, banksWithSameName]) => (
+                  <View key={name}>
+                    {banksWithSameName.length > 1 && (
+                      <Text style={styles.bankNameSeparator}>{name}</Text>
+                    )}
+                    {banksWithSameName.map((bank) => {
+                      const isConnected = connected.includes(bank.id);
+                      const isLinking = linkingBankId === bank.id;
+                      const showCountry = banksWithSameName.length > 1;
+                      const countryDisplay =
+                        COUNTRY_NAMES[bank.country] || bank.country;
+
+                      return (
+                        <TouchableOpacity
+                          key={bank.id}
+                          style={[
+                            styles.bankRow,
+                            isConnected && styles.bankRowConnected,
+                          ]}
+                          onPress={() =>
+                            !isConnected && handleBankConnect(bank)
+                          }
+                          disabled={
+                            loadingBanks ||
+                            isConnected ||
+                            Boolean(linkingBankId)
+                          }
+                        >
+                          <View style={styles.bankNameContainer}>
+                            <Text style={[styles.bankName, { color: "#111" }]}>
+                              {showCountry
+                                ? `${bank.name} (${bank.country})`
+                                : bank.name}
+                            </Text>
+                            {showCountry && (
+                              <Text style={styles.bankCountrySubtitle}>
+                                {countryDisplay}
+                              </Text>
+                            )}
+                          </View>
+                          {isConnected ? (
+                            <View
+                              style={{
+                                flexDirection: "row",
+                                alignItems: "center",
+                              }}
+                            >
+                              <View style={styles.connectedBadge}>
+                                <Text style={styles.connectedText}>
+                                  ✓ Connected
+                                </Text>
+                              </View>
+                              <TouchableOpacity
+                                style={styles.removeBankBtn}
+                                onPress={() =>
+                                  Alert.alert(
+                                    "Remove Bank",
+                                    "Are you sure you want to unlink this bank?",
+                                    [
+                                      { text: "Cancel", style: "cancel" },
+                                      {
+                                        text: "Remove",
+                                        style: "destructive",
+                                        onPress: () =>
+                                          handleRemoveBank(bank.id),
+                                      },
+                                    ],
+                                  )
+                                }
+                              >
+                                <Text style={styles.removeBankText}>
+                                  Remove
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          ) : (
+                            <Text style={styles.connectText}>
+                              {isLinking ? "Connecting..." : "Connect"}
+                            </Text>
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
-                ) : (
-                  <Text style={styles.connectText}>Connect</Text>
-                )}
+                ))
+              )}
+
+              {/* Add Bank Button: show "+ Add Bank" if none connected, else "+ Add Another Bank" */}
+              <TouchableOpacity
+                style={styles.addBankBtn}
+                onPress={() => {
+                  setShowAddBankMode(true);
+                  setSearchQuery("");
+                }}
+              >
+                <Text style={styles.addBankBtnText}>
+                  {connected.length === 0 ? "+ Add Bank" : "+ Add Another Bank"}
+                </Text>
               </TouchableOpacity>
-            );
-          })}
+            </>
+          ) : (
+            <>
+              {/* Back button for add bank mode */}
+              <TouchableOpacity
+                style={styles.backFromAddBankBtn}
+                onPress={() => {
+                  setShowAddBankMode(false);
+                  setSearchQuery("");
+                }}
+              >
+                <Text style={styles.backFromAddBankBtnText}>
+                  ← Back to Connected Banks
+                </Text>
+              </TouchableOpacity>
+
+              {/* Search input in add mode */}
+              <View style={styles.searchContainerSettings}>
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search banks by name or country..."
+                  placeholderTextColor="#999"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  autoFocus
+                />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity
+                    style={styles.searchClearBtn}
+                    onPress={() => setSearchQuery("")}
+                  >
+                    <Text style={styles.searchClearText}>✕</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {!loadingBanks &&
+                filteredBanks.length === 0 &&
+                banks.length > 0 && (
+                  <View style={styles.noBanksContainerSettings}>
+                    <Text style={styles.noBanksText}>
+                      {searchQuery
+                        ? `No banks found matching "${searchQuery}"`
+                        : "No additional banks available"}
+                    </Text>
+                  </View>
+                )}
+
+              {Object.entries(banksByName).map(([name, banksWithSameName]) => (
+                <View key={name}>
+                  {banksWithSameName.length > 1 && (
+                    <Text style={styles.bankNameSeparator}>{name}</Text>
+                  )}
+                  {banksWithSameName.map((bank) => {
+                    const isConnected = connected.includes(bank.id);
+                    const isLinking = linkingBankId === bank.id;
+                    const showCountry = banksWithSameName.length > 1;
+                    const countryDisplay =
+                      COUNTRY_NAMES[bank.country] || bank.country;
+
+                    return (
+                      <TouchableOpacity
+                        key={bank.id}
+                        style={[
+                          styles.bankRow,
+                          isConnected && styles.bankRowConnected,
+                        ]}
+                        onPress={() => !isConnected && handleBankConnect(bank)}
+                        disabled={
+                          loadingBanks || isConnected || Boolean(linkingBankId)
+                        }
+                      >
+                        <View style={styles.bankNameContainer}>
+                          <Text style={[styles.bankName, { color: "#111" }]}>
+                            {showCountry
+                              ? `${bank.name} (${bank.country})`
+                              : bank.name}
+                          </Text>
+                          {showCountry && (
+                            <Text style={styles.bankCountrySubtitle}>
+                              {countryDisplay}
+                            </Text>
+                          )}
+                        </View>
+                        {isConnected ? (
+                          <View
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                            }}
+                          >
+                            <View style={styles.connectedBadge}>
+                              <Text style={styles.connectedText}>
+                                ✓ Connected
+                              </Text>
+                            </View>
+                            <TouchableOpacity
+                              style={styles.removeBankBtn}
+                              onPress={() =>
+                                Alert.alert(
+                                  "Remove Bank",
+                                  "Are you sure you want to unlink this bank?",
+                                  [
+                                    { text: "Cancel", style: "cancel" },
+                                    {
+                                      text: "Remove",
+                                      style: "destructive",
+                                      onPress: () => handleRemoveBank(bank.id),
+                                    },
+                                  ],
+                                )
+                              }
+                            >
+                              <Text style={styles.removeBankText}>Remove</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ) : (
+                          <Text style={styles.connectText}>
+                            {isLinking ? "Connecting..." : "Connect"}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ))}
+            </>
+          )}
         </View>
 
         {/* Preferences */}
@@ -291,6 +702,13 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   bankDesc: { fontSize: 12, color: "#888", marginBottom: 12, lineHeight: 18 },
+  loadingBanksWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 10,
+  },
+  loadingBanksText: { fontSize: 12, color: "#666" },
   bankRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -332,4 +750,87 @@ const styles = StyleSheet.create({
   },
   signOutText: { color: "#fff", fontSize: 15, fontWeight: "600" },
   version: { textAlign: "center", fontSize: 12, color: "#aaa" },
+  searchContainerSettings: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F5F5F7",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: "#E5E5E5",
+    marginBottom: 12,
+  },
+  searchInput: {
+    flex: 1,
+    height: 36,
+    fontSize: 13,
+    color: "#1a1a1a",
+  },
+  searchClearBtn: {
+    padding: 6,
+  },
+  searchClearText: {
+    fontSize: 14,
+    color: "#999",
+  },
+  bankNameSeparator: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#5B3FD9",
+    marginTop: 10,
+    marginBottom: 6,
+    paddingLeft: 2,
+  },
+  bankNameContainer: {
+    flex: 1,
+  },
+  bankCountrySubtitle: {
+    fontSize: 11,
+    color: "#999",
+    marginTop: 3,
+  },
+  noBanksContainerSettings: {
+    alignItems: "center",
+    paddingVertical: 16,
+  },
+  noBanksText: {
+    fontSize: 13,
+    color: "#666",
+    fontWeight: "500",
+  },
+  addBankBtn: {
+    backgroundColor: "#5B3FD9",
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: "center",
+    marginTop: 12,
+  },
+  addBankBtnText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  backFromAddBankBtn: {
+    alignSelf: "flex-start",
+    marginBottom: 12,
+    paddingVertical: 4,
+  },
+  backFromAddBankBtnText: {
+    color: "#5B3FD9",
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  removeBankBtn: {
+    marginLeft: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    backgroundColor: "#FEE2E2",
+    borderRadius: 6,
+  },
+  removeBankText: {
+    color: "#DC2626",
+    fontWeight: "600",
+    fontSize: 13,
+  },
 });

@@ -2,7 +2,12 @@ import "react-native-gesture-handler";
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { Text, View, TouchableOpacity } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { Text, View, TouchableOpacity, Platform } from "react-native";
+import {
+  SafeAreaProvider,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 import WelcomeScreen from "./screens/WelcomeScreen";
 import LoginScreen from "./screens/LoginScreen";
@@ -66,7 +71,7 @@ function AppHeader({ navigation, showActions = true }) {
             <Text style={{ color: "#fff", fontSize: 22 }}>+</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => navigation.navigate("Settings")}>
-            <Text style={{ color: "#fff", fontSize: 20 }}>⚙</Text>
+            <Ionicons name="settings-outline" size={22} color="#fff" />
           </TouchableOpacity>
         </View>
       )}
@@ -75,6 +80,8 @@ function AppHeader({ navigation, showActions = true }) {
 }
 
 function MainTabs({ navigation }) {
+  const insets = useSafeAreaInsets();
+
   return (
     <View style={{ flex: 1 }}>
       <AppHeader navigation={navigation} />
@@ -86,34 +93,36 @@ function MainTabs({ navigation }) {
           tabBarStyle: {
             backgroundColor: "#fff",
             borderTopColor: "#F0F0F0",
-            height: 60,
-            paddingBottom: 8,
+            height: (Platform.OS === "ios" ? 68 : 62) + insets.bottom,
+            paddingTop: 8,
+            paddingBottom: Math.max(10, insets.bottom),
           },
-          tabBarLabel: ({ focused, color }) => (
-            <Text
-              style={{
-                color,
-                fontSize: 11,
-                fontWeight: focused ? "600" : "400",
-              }}
-            >
-              {route.name}
-            </Text>
-          ),
+          tabBarItemStyle: {
+            paddingVertical: 4,
+          },
+          tabBarIconStyle: {
+            marginTop: 0,
+          },
+          tabBarLabelStyle: {
+            fontSize: 11,
+            marginTop: 2,
+            marginBottom: 0,
+          },
           tabBarIcon: ({ color, focused }) => {
-            const icons = { Home: "⊞", Subs: "💳", Analytics: "◎" };
-            return (
-              <View
-                style={{
-                  backgroundColor: focused ? "#EEE9FF" : "transparent",
-                  borderRadius: 8,
-                  paddingHorizontal: 12,
-                  paddingVertical: 4,
-                }}
-              >
-                <Text style={{ fontSize: 18, color }}>{icons[route.name]}</Text>
-              </View>
-            );
+            const iconName =
+              route.name === "Home"
+                ? focused
+                  ? "home"
+                  : "home-outline"
+                : route.name === "Subs"
+                  ? focused
+                    ? "card"
+                    : "card-outline"
+                  : focused
+                    ? "stats-chart"
+                    : "stats-chart-outline";
+
+            return <Ionicons name={iconName} size={22} color={color} />;
           },
         })}
       >
@@ -127,37 +136,39 @@ function MainTabs({ navigation }) {
 
 export default function App() {
   return (
-    <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="Welcome" component={WelcomeScreen} />
-        <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="Register" component={RegisterScreen} />
-        <Stack.Screen name="BankLinking" component={BankLinkingScreen} />
-        <Stack.Screen name="Main" component={MainTabs} />
-        <Stack.Screen
-          name="SubscriptionDetail"
-          component={SubscriptionDetailScreen}
-        />
-        <Stack.Screen name="Settings" component={SettingsScreen} />
-        <Stack.Screen name="CurrencySettings" component={CurrencyScreen} />
-        <Stack.Screen
-          name="NotificationsSettings"
-          component={NotificationsScreen}
-        />
-        <Stack.Screen
-          name="PrivacySecuritySettings"
-          component={PrivacySecurityScreen}
-        />
-        <Stack.Screen name="EditProfile" component={EditProfileScreen} />
-        <Stack.Screen
-          name="AddSubscription"
-          component={AddSubscriptionScreen}
-        />
-        <Stack.Screen
-          name="CancellationSuccess"
-          component={CancellationSuccessScreen}
-        />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <SafeAreaProvider>
+      <NavigationContainer>
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="Welcome" component={WelcomeScreen} />
+          <Stack.Screen name="Login" component={LoginScreen} />
+          <Stack.Screen name="Register" component={RegisterScreen} />
+          <Stack.Screen name="BankLinking" component={BankLinkingScreen} />
+          <Stack.Screen name="Main" component={MainTabs} />
+          <Stack.Screen
+            name="SubscriptionDetail"
+            component={SubscriptionDetailScreen}
+          />
+          <Stack.Screen name="Settings" component={SettingsScreen} />
+          <Stack.Screen name="CurrencySettings" component={CurrencyScreen} />
+          <Stack.Screen
+            name="NotificationsSettings"
+            component={NotificationsScreen}
+          />
+          <Stack.Screen
+            name="PrivacySecuritySettings"
+            component={PrivacySecurityScreen}
+          />
+          <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+          <Stack.Screen
+            name="AddSubscription"
+            component={AddSubscriptionScreen}
+          />
+          <Stack.Screen
+            name="CancellationSuccess"
+            component={CancellationSuccessScreen}
+          />
+        </Stack.Navigator>
+      </NavigationContainer>
+    </SafeAreaProvider>
   );
 }

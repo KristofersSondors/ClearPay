@@ -1,4 +1,4 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import AsyncStorage from "./asyncStorage";
 
 const NOTIFICATION_SETTINGS_KEY = "clearpay_notification_settings";
 const PRIVACY_SECURITY_SETTINGS_KEY = "clearpay_privacy_security_settings";

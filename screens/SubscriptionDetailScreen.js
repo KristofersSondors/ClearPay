@@ -11,8 +11,13 @@ import {
   Switch,
   TextInput,
 } from "react-native";
+import SubscriptionLogo from "../src/components/SubscriptionLogo";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { updateManualSubscription } from "../src/lib/manualSubscriptions";
+import {
+  removeManualSubscription,
+  updateManualSubscription,
+} from "../src/lib/manualSubscriptions";
+import { getSupabaseClient } from "../src/lib/supabase";
 import {
   sanitizeAmountInput,
   sanitizeFrequencyInput,
@@ -74,6 +79,20 @@ function formatDateToInput(date) {
   return `${year}-${month}-${day}`;
 }
 
+function getSuggestedNextPaymentDateInput(frequency) {
+  const nextDate = new Date();
+
+  if (frequency === "Weekly") {
+    nextDate.setDate(nextDate.getDate() + 7);
+  } else if (frequency === "Yearly") {
+    nextDate.setDate(nextDate.getDate() + 365);
+  } else {
+    nextDate.setDate(nextDate.getDate() + 30);
+  }
+
+  return formatDateToInput(nextDate);
+}
+
 function shiftMonth(date, amount) {
   const shifted = new Date(date.getFullYear(), date.getMonth() + amount, 1);
   return shifted;
@@ -108,27 +127,49 @@ function getCalendarCells(monthDate) {
 
 export default function SubscriptionDetailScreen({ route, navigation }) {
   const { sub } = route.params;
+  const initialFrequency = sanitizeFrequencyInput(
+    sub.freq || sub.frequency || "Monthly",
+  );
+  const initialNextPaymentDate =
+    isoToDateInput(sub.nextPaymentIso || sub.nextPaymentIso) ||
+    sanitizeNextPaymentDateInput(sub.nextPaymentDate || "");
   const [notify, setNotify] = useState(true);
   const [daysBefore, setDaysBefore] = useState("3 days");
+  // Always use the original user-entered amount for editing
   const [amount, setAmount] = useState(
-    sanitizeAmountInput(String(sub.amount || "")),
+    sanitizeAmountInput(
+      String(
+        sub.amount !== undefined
+          ? sub.amount
+          : sub.amountValue !== undefined
+            ? sub.amountValue
+            : "",
+      ),
+    ),
   );
-  const [frequency, setFrequency] = useState(
-    sanitizeFrequencyInput(sub.freq || "Monthly"),
-  );
+  const [frequency, setFrequency] = useState(initialFrequency);
   const [nextPaymentDate, setNextPaymentDate] = useState(
-    isoToDateInput(sub.nextPaymentIso) ||
-      sanitizeNextPaymentDateInput(sub.nextPaymentDate || ""),
+    initialNextPaymentDate,
   );
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(
-    parseDateInputToDate(
-      isoToDateInput(sub.nextPaymentIso) ||
-        sanitizeNextPaymentDateInput(sub.nextPaymentDate || ""),
-    ),
+    parseDateInputToDate(initialNextPaymentDate),
   );
   const [freqOpen, setFreqOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Compute the normalized monthly projection for display
+  function computeMonthlyAmount(amount, frequency) {
+    const safeAmount = Number(String(amount).replace(/[^\d.]/g, ""));
+    if (frequency === "Weekly") {
+      return (safeAmount * 52) / 12;
+    }
+    if (frequency === "Yearly") {
+      return safeAmount / 12;
+    }
+    return safeAmount;
+  }
+  const monthlyProjection = computeMonthlyAmount(amount, frequency);
 
   const amountLabel = `${sub.currency || "USD"} ${amount || "0.00"}`;
 
@@ -137,7 +178,13 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
   const handleSave = async () => {
     const cleanAmount = sanitizeAmountInput(amount);
     const cleanFrequency = sanitizeFrequencyInput(frequency);
-    const cleanDate = sanitizeNextPaymentDateInput(nextPaymentDate);
+    const cleanDateInput = sanitizeNextPaymentDateInput(nextPaymentDate);
+    const frequencyChanged = cleanFrequency !== initialFrequency;
+    const dateWasUnchanged = cleanDateInput === initialNextPaymentDate;
+    const cleanDate =
+      frequencyChanged && dateWasUnchanged
+        ? getSuggestedNextPaymentDateInput(cleanFrequency)
+        : cleanDateInput;
 
     setAmount(cleanAmount);
     setFrequency(cleanFrequency);
@@ -157,11 +204,40 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
 
     try {
       setSaving(true);
-      await updateManualSubscription(sub.id, {
-        amount: cleanAmount,
-        frequency: cleanFrequency,
-        nextPaymentDate: cleanDate,
-      });
+      if (sub.source === "manual") {
+        await updateManualSubscription(sub.id, {
+          amount: cleanAmount,
+          frequency: cleanFrequency,
+          nextPaymentDate: cleanDate,
+        });
+      } else {
+        // Detected subscription: persist edit via backend
+        const supabase = getSupabaseClient();
+        const { data: userData, error: userError } =
+          await supabase.auth.getUser();
+        if (userError || !userData?.user?.id) {
+          throw new Error("Not authenticated");
+        }
+        const userId = userData.user.id;
+        const response = await fetch(
+          `${process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:4000"}/api/banking/subscriptions-detected/${encodeURIComponent(sub.id)}`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userId,
+              name: sub.name,
+              amount: cleanAmount,
+              currency: sub.currency,
+              frequency: cleanFrequency,
+              nextPaymentIso: cleanDate,
+            }),
+          },
+        );
+        if (!response.ok) {
+          throw new Error("Failed to update subscription");
+        }
+      }
       Alert.alert("Saved", "Subscription updated successfully.");
       navigation.goBack();
     } catch {
@@ -169,6 +245,34 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleCancelSubscription = () => {
+    Alert.alert(
+      "Cancel subscription",
+      `Remove ${sub.name} from your subscriptions?`,
+      [
+        { text: "Keep", style: "cancel" },
+        {
+          text: "Cancel subscription",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setSaving(true);
+              await removeManualSubscription(sub.id);
+              navigation.replace("CancellationSuccess");
+            } catch {
+              Alert.alert(
+                "Cancellation failed",
+                "Unable to remove this subscription right now.",
+              );
+            } finally {
+              setSaving(false);
+            }
+          },
+        },
+      ],
+    );
   };
 
   const openDatePicker = () => {
@@ -201,11 +305,12 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
         </TouchableOpacity>
 
         <View style={styles.heroSection}>
-          <View
-            style={[styles.subIconLarge, { backgroundColor: sub.color + "22" }]}
-          >
-            <Text style={{ fontSize: 48 }}>{sub.emoji}</Text>
-          </View>
+          <SubscriptionLogo
+            name={sub.name}
+            color={sub.color}
+            size={88}
+            radius={22}
+          />
           <Text style={styles.heroName}>{sub.name}</Text>
         </View>
 
@@ -234,6 +339,22 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
                 keyboardType="decimal-pad"
               />
             </View>
+          </View>
+          {/* Show the normalized monthly projection below the input */}
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "flex-end",
+              marginBottom: 4,
+            }}
+          >
+            <Text style={{ fontSize: 12, color: "#888" }}>
+              Monthly projection:{" "}
+              {Number.isFinite(monthlyProjection)
+                ? monthlyProjection.toFixed(2)
+                : "0.00"}{" "}
+              {sub.currency || "USD"}
+            </Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.infoRow}>
@@ -284,10 +405,13 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.cancelBtn}
-          onPress={() => navigation.navigate("CancellationSuccess")}
+          style={[styles.cancelBtn, saving && styles.saveBtnDisabled]}
+          onPress={handleCancelSubscription}
+          disabled={saving}
         >
-          <Text style={styles.cancelBtnText}>⊖ Cancel subscription</Text>
+          <Text style={styles.cancelBtnText}>
+            {saving ? "Canceling..." : "⊖ Cancel subscription"}
+          </Text>
         </TouchableOpacity>
 
         <View style={styles.notifyRow}>

@@ -1,4 +1,4 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import AsyncStorage from "./asyncStorage";
 
 const PREFERRED_CURRENCY_KEY = "clearpay_preferred_currency";
 const SUPPORTED_CURRENCIES = ["USD", "EUR", "GBP"];

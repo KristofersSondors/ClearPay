@@ -9,7 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import AsyncStorage from "../src/lib/asyncStorage";
 import * as WebBrowser from "expo-web-browser";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getSupabaseClient, hasSupabaseConfig } from "../src/lib/supabase";
@@ -18,6 +18,67 @@ import {
   sanitizePassword,
   validateLoginInput,
 } from "../src/utils/authSanitization";
+
+WebBrowser.maybeCompleteAuthSession();
+
+function resolveGoogleAuthRedirectUrl() {
+  const envRedirect = process.env.EXPO_PUBLIC_AUTH_REDIRECT_URL?.trim();
+
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    if (envRedirect) {
+      return envRedirect;
+    }
+
+    return `${window.location.origin}/auth/callback`;
+  }
+
+  if (envRedirect && envRedirect.startsWith("clearpay://")) {
+    return envRedirect;
+  }
+
+  return "clearpay://auth/callback";
+}
+
+function parseCallbackParams(callbackUrl = "") {
+  const params = new URLSearchParams();
+
+  if (!callbackUrl) {
+    return params;
+  }
+
+  try {
+    const parsedUrl = new URL(callbackUrl);
+
+    parsedUrl.searchParams.forEach((value, key) => {
+      params.set(key, value);
+    });
+
+    if (parsedUrl.hash?.startsWith("#")) {
+      const hashParams = new URLSearchParams(parsedUrl.hash.slice(1));
+      hashParams.forEach((value, key) => {
+        params.set(key, value);
+      });
+    }
+
+    return params;
+  } catch {
+    // Fallback for malformed URLs so we can still inspect callback params.
+    const [withoutHash, hashPart = ""] = callbackUrl.split("#");
+    const queryPart = withoutHash.split("?")[1] || "";
+
+    const queryParams = new URLSearchParams(queryPart);
+    queryParams.forEach((value, key) => {
+      params.set(key, value);
+    });
+
+    const hashParams = new URLSearchParams(hashPart);
+    hashParams.forEach((value, key) => {
+      params.set(key, value);
+    });
+
+    return params;
+  }
+}
 
 export default function LoginScreen({ navigation }) {
   const REMEMBER_EMAIL_KEY = "clearpay_remembered_email";
@@ -28,7 +89,7 @@ export default function LoginScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const googleAuthInProgressRef = useRef(false);
 
-  const redirectTo = "clearpay://auth/callback";
+  const redirectTo = resolveGoogleAuthRedirectUrl();
 
   useEffect(() => {
     const loadRememberedEmail = async () => {
@@ -157,19 +218,45 @@ export default function LoginScreen({ navigation }) {
         return;
       }
 
-      const authCode = new URL(authResult.url).searchParams.get("code");
+      const callbackParams = parseCallbackParams(authResult.url);
+      const callbackError =
+        callbackParams.get("error_description") || callbackParams.get("error");
 
-      if (!authCode || typeof authCode !== "string") {
-        setError("Google sign-in failed to return an authorization code.");
+      if (callbackError) {
+        setError(callbackError);
         return;
       }
 
-      const { error: exchangeError } =
-        await supabase.auth.exchangeCodeForSession(authCode);
+      const authCode = callbackParams.get("code");
 
-      if (exchangeError) {
-        setError(exchangeError.message || "Unable to finish Google sign-in.");
-        return;
+      if (authCode && typeof authCode === "string") {
+        const { error: exchangeError } =
+          await supabase.auth.exchangeCodeForSession(authCode);
+
+        if (exchangeError) {
+          setError(exchangeError.message || "Unable to finish Google sign-in.");
+          return;
+        }
+      } else {
+        const accessToken = callbackParams.get("access_token");
+        const refreshToken = callbackParams.get("refresh_token");
+
+        if (!accessToken || !refreshToken) {
+          setError(
+            "Google sign-in callback did not include a valid session. Please try again.",
+          );
+          return;
+        }
+
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+
+        if (sessionError) {
+          setError(sessionError.message || "Unable to finish Google sign-in.");
+          return;
+        }
       }
 
       setTimeout(() => {

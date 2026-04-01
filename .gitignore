@@ -5,11 +5,14 @@ node_modules
 dist
 dist-ssr
 *.local
+.expo/web/cache/
 
 # Environment variables (Supabase keys, etc.)
 .env
 .env.local
 .env.*.local
+backend/*.pem
+backend/*.key
 
 # Logs
 logs
