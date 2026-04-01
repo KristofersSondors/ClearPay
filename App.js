@@ -151,7 +151,11 @@ export default function App() {
         return;
       }
     }
-    // Not authenticated — let them land on Welcome as normal
+    // Not authenticated (guest/registration flow) — go back to BankLinking
+    navigationRef.current?.reset({
+      index: 1,
+      routes: [{ name: "Register" }, { name: "BankLinking" }],
+    });
   };
 
   return (

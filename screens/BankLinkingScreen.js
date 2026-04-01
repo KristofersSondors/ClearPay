@@ -8,6 +8,7 @@ import {
   StyleSheet,
   ScrollView,
   TextInput,
+  Platform,
 } from "react-native";
 import AsyncStorage from "../src/lib/asyncStorage";
 import * as WebBrowser from "expo-web-browser";
@@ -118,6 +119,16 @@ export default function BankLinkingScreen({ navigation, route }) {
         setCurrentUserId(userId);
         await loadBankProviders();
         await loadLinkedState(userId);
+
+        // On web: handle return from bank auth full-page redirect
+        if (Platform.OS === "web") {
+          const params = new URLSearchParams(window.location.search);
+          if (params.get("bankLinked")) {
+            window.history.replaceState({}, "", window.location.pathname);
+            const returnedUserId = params.get("userId") || userId;
+            await loadLinkedState(returnedUserId);
+          }
+        }
       } catch {
         Alert.alert(
           "Banking service unavailable",
@@ -139,12 +150,22 @@ export default function BankLinkingScreen({ navigation, route }) {
     try {
       setLinkingBankId(bank.id);
 
+      const redirectUrl =
+        Platform.OS === "web"
+          ? `${window.location.origin}${window.location.pathname}?bankLinked=1&userId=${encodeURIComponent(currentUserId)}`
+          : appRedirectUrl;
+
       const { authorizationUrl } = await startBankLink({
         userId: currentUserId,
         bankId: bank.id,
-        appRedirectUrl,
+        appRedirectUrl: redirectUrl,
         aspsp: bank.aspsp,
       });
+
+      if (Platform.OS === "web") {
+        window.location.href = authorizationUrl;
+        return;
+      }
 
       const authResult = await WebBrowser.openAuthSessionAsync(
         authorizationUrl,
