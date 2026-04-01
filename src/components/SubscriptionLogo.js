@@ -4,8 +4,8 @@ import { getSubscriptionBrand } from "../lib/subscriptionLogos";
 
 export default function SubscriptionLogo({ name, color, size = 44, radius = 12 }) {
   const brand = getSubscriptionBrand(name);
-  const [clearbitFailed, setClearbitFailed] = useState(false);
   const [iconHorseFailed, setIconHorseFailed] = useState(false);
+  const [googleFailed, setGoogleFailed] = useState(false);
 
   const bgColor = brand?.color || color || "#9B8EC4";
   const initial = (name || "?").charAt(0).toUpperCase();
@@ -13,24 +13,6 @@ export default function SubscriptionLogo({ name, color, size = 44, radius = 12 }
   const fontSize = Math.round(size * 0.38);
 
   if (brand) {
-    // Try Clearbit first (high quality), then icon.horse, then fallback to initial
-    if (!clearbitFailed) {
-      return (
-        <View style={{
-          width: size, height: size, borderRadius: radius,
-          backgroundColor: "#fff", borderWidth: 1, borderColor: "#EFEFEF",
-          justifyContent: "center", alignItems: "center", overflow: "hidden",
-        }}>
-          <Image
-            source={{ uri: `https://logo.clearbit.com/${brand.domain}` }}
-            style={{ width: imgSize, height: imgSize }}
-            resizeMode="contain"
-            onError={() => setClearbitFailed(true)}
-          />
-        </View>
-      );
-    }
-
     if (!iconHorseFailed) {
       return (
         <View style={{
@@ -43,6 +25,23 @@ export default function SubscriptionLogo({ name, color, size = 44, radius = 12 }
             style={{ width: imgSize, height: imgSize }}
             resizeMode="contain"
             onError={() => setIconHorseFailed(true)}
+          />
+        </View>
+      );
+    }
+
+    if (!googleFailed) {
+      return (
+        <View style={{
+          width: size, height: size, borderRadius: radius,
+          backgroundColor: "#fff", borderWidth: 1, borderColor: "#EFEFEF",
+          justifyContent: "center", alignItems: "center", overflow: "hidden",
+        }}>
+          <Image
+            source={{ uri: `https://www.google.com/s2/favicons?domain=${brand.domain}&sz=128` }}
+            style={{ width: imgSize, height: imgSize }}
+            resizeMode="contain"
+            onError={() => setGoogleFailed(true)}
           />
         </View>
       );

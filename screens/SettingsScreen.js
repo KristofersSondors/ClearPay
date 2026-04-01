@@ -128,12 +128,23 @@ export default function SettingsScreen({ navigation }) {
     try {
       setLinkingBankId(bank.id);
 
+      // On web, use full-page redirect — popups are blocked by COOP headers
+      const redirectUrl =
+        Platform.OS === "web"
+          ? `${window.location.origin}${window.location.pathname}?bankLinked=1&userId=${encodeURIComponent(currentUserId)}`
+          : appRedirectUrl;
+
       const { authorizationUrl } = await startBankLink({
         userId: currentUserId,
         bankId: bank.id,
-        appRedirectUrl,
+        appRedirectUrl: redirectUrl,
         aspsp: bank.aspsp,
       });
+
+      if (Platform.OS === "web") {
+        window.location.href = authorizationUrl;
+        return;
+      }
 
       const authResult = await WebBrowser.openAuthSessionAsync(
         authorizationUrl,
@@ -192,6 +203,21 @@ export default function SettingsScreen({ navigation }) {
       );
     }
   };
+
+  // Handle return from bank auth on web (full-page redirect flow)
+  useEffect(() => {
+    if (Platform.OS === "web") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("bankLinked")) {
+        window.history.replaceState({}, "", window.location.pathname);
+        const returnedUserId = params.get("userId");
+        if (returnedUserId) {
+          setCurrentUserId(returnedUserId);
+          loadLinkedBanks(returnedUserId);
+        }
+      }
+    }
+  }, []);
 
   useEffect(() => {
     const loadProfile = async () => {
