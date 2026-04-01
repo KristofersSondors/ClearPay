@@ -6,7 +6,8 @@ import {
   ScrollView,
   TouchableOpacity,
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import SubscriptionLogo from "../src/components/SubscriptionLogo";
+import AsyncStorage from "../src/lib/asyncStorage";
 import { getManualSubscriptions } from "../src/lib/manualSubscriptions";
 import {
   getCurrencyMeta,
@@ -265,8 +266,8 @@ export default function DashboardScreen({ navigation }) {
       ) : (
         upcomingPayments.map((item, index) => (
           <View key={`${item.name}-${index}`} style={styles.paymentRow}>
-            <View style={styles.paymentEmoji}>
-              <Text style={{ fontSize: 20 }}>{item.emoji}</Text>
+            <View style={{ marginRight: 12 }}>
+              <SubscriptionLogo name={item.name} size={40} radius={10} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.paymentName}>{item.name}</Text>

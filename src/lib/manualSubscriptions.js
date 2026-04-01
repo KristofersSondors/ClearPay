@@ -1,4 +1,4 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import AsyncStorage from "./asyncStorage";
 import { getSupabaseClient, hasSupabaseConfig } from "./supabase";
 import {
   parseNextPaymentDateInputToIso,

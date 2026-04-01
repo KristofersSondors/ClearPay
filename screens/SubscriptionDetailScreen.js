@@ -11,6 +11,7 @@ import {
   Switch,
   TextInput,
 } from "react-native";
+import SubscriptionLogo from "../src/components/SubscriptionLogo";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   removeManualSubscription,
@@ -304,11 +305,12 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
         </TouchableOpacity>
 
         <View style={styles.heroSection}>
-          <View
-            style={[styles.subIconLarge, { backgroundColor: sub.color + "22" }]}
-          >
-            <Text style={{ fontSize: 48 }}>{sub.emoji}</Text>
-          </View>
+          <SubscriptionLogo
+            name={sub.name}
+            color={sub.color}
+            size={88}
+            radius={22}
+          />
           <Text style={styles.heroName}>{sub.name}</Text>
         </View>
 

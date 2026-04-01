@@ -1,4 +1,4 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import AsyncStorage from "./asyncStorage";
 
 const EXCHANGE_RATES_CACHE_KEY = "clearpay_exchange_rates_usd";
 const EXCHANGE_RATES_TTL_MS = 12 * 60 * 60 * 1000;
