@@ -11,6 +11,7 @@ import {
   Switch,
   TextInput,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import SubscriptionLogo from "../src/components/SubscriptionLogo";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
@@ -324,7 +325,7 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
               <Text style={styles.dateSelectorText}>
                 {nextPaymentDate || "Select date"}
               </Text>
-              <Text style={styles.dateSelectorIcon}>📅</Text>
+              <Ionicons name="calendar-outline" size={16} color="#888" />
             </TouchableOpacity>
           </View>
           <View style={styles.divider} />
@@ -409,9 +410,12 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
           onPress={handleCancelSubscription}
           disabled={saving}
         >
-          <Text style={styles.cancelBtnText}>
-            {saving ? "Canceling..." : "⊖ Cancel subscription"}
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            {!saving && <Ionicons name="remove-circle-outline" size={18} color="#fff" />}
+            <Text style={styles.cancelBtnText}>
+              {saving ? "Canceling..." : "Cancel subscription"}
+            </Text>
+          </View>
         </TouchableOpacity>
 
         <View style={styles.notifyRow}>
@@ -589,7 +593,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   dateSelectorText: { fontSize: 13, color: "#1a1a1a" },
-  dateSelectorIcon: { fontSize: 14 },
   modalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.35)",
@@ -697,7 +700,7 @@ const styles = StyleSheet.create({
   dropTextActive: { color: "#5B3FD9", fontWeight: "600" },
   divider: { height: 1, backgroundColor: "#F0F0F0" },
   saveBtn: {
-    backgroundColor: "#16A34A",
+    backgroundColor: "#5B3FD9",
     borderRadius: 10,
     padding: 16,
     alignItems: "center",
@@ -706,7 +709,7 @@ const styles = StyleSheet.create({
   saveBtnDisabled: { opacity: 0.7 },
   saveBtnText: { color: "#fff", fontSize: 15, fontWeight: "600" },
   cancelBtn: {
-    backgroundColor: "#5B3FD9",
+    backgroundColor: "#EF4444",
     borderRadius: 10,
     padding: 16,
     alignItems: "center",

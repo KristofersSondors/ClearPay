@@ -10,6 +10,7 @@ import {
   Alert,
   TextInput,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "../src/lib/asyncStorage";
 import * as WebBrowser from "expo-web-browser";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -311,7 +312,7 @@ export default function SettingsScreen({ navigation }) {
                   onError={() => setAvatarLoadFailed(true)}
                 />
               ) : (
-                <Text style={{ fontSize: 28 }}>🏔️</Text>
+                <Ionicons name="person-outline" size={28} color="#888" />
               )}
             </View>
             <View style={{ flex: 1 }}>
@@ -591,19 +592,19 @@ export default function SettingsScreen({ navigation }) {
         <View style={styles.card}>
           {[
             {
-              icon: "💳",
+              iconName: "card-outline",
               label: "Currency & Region",
               value: getCurrencyPreferenceLabel(preferredCurrency),
               onPress: () => navigation.navigate("CurrencySettings"),
             },
             {
-              icon: "🔔",
+              iconName: "notifications-outline",
               label: "Notifications",
               value: "",
               onPress: () => navigation.navigate("NotificationsSettings"),
             },
             {
-              icon: "🔒",
+              iconName: "lock-closed-outline",
               label: "Privacy & Security",
               value: "",
               onPress: () => navigation.navigate("PrivacySecuritySettings"),
@@ -614,20 +615,25 @@ export default function SettingsScreen({ navigation }) {
               style={styles.prefRow}
               onPress={item.onPress}
             >
-              <Text style={styles.prefIcon}>{item.icon}</Text>
+              <View style={styles.prefIconWrap}>
+                <Ionicons name={item.iconName} size={18} color="#5B3FD9" />
+              </View>
               <Text style={styles.prefLabel}>{item.label}</Text>
               <View style={{ flex: 1, alignItems: "flex-end" }}>
                 {item.value ? (
                   <Text style={styles.prefValue}>{item.value}</Text>
                 ) : null}
               </View>
-              <Text style={styles.chevron}>›</Text>
+              <Ionicons name="chevron-forward" size={18} color="#ccc" style={{ marginLeft: 6 }} />
             </TouchableOpacity>
           ))}
         </View>
 
         <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
-          <Text style={styles.signOutText}>⇥ Sign Out</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Ionicons name="log-out-outline" size={18} color="#fff" />
+            <Text style={styles.signOutText}>Sign Out</Text>
+          </View>
         </TouchableOpacity>
 
         <Text style={styles.version}>Version 1.2.0 · Build 4829</Text>
@@ -736,10 +742,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#F5F5F5",
   },
-  prefIcon: { fontSize: 18, marginRight: 12 },
+  prefIconWrap: { marginRight: 12, justifyContent: "center", alignItems: "center" },
   prefLabel: { fontSize: 14, color: "#1a1a1a" },
   prefValue: { fontSize: 13, color: "#888" },
-  chevron: { fontSize: 20, color: "#ccc", marginLeft: 6 },
   signOutBtn: {
     backgroundColor: "#EF4444",
     borderRadius: 10,

@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import SubscriptionLogo from "../src/components/SubscriptionLogo";
 import AsyncStorage from "../src/lib/asyncStorage";
 import { getManualSubscriptions } from "../src/lib/manualSubscriptions";
@@ -32,7 +33,7 @@ import {
 
 const LOCAL_BANKING_USER_ID_KEY = "clearpay_local_banking_user_id";
 
-const StatCard = ({ label, value, sub, subColor, icon }) => (
+const StatCard = ({ label, value, sub, subColor, iconName }) => (
   <View style={styles.statCard}>
     <View style={{ flex: 1 }}>
       <Text style={styles.statLabel}>{label}</Text>
@@ -44,7 +45,7 @@ const StatCard = ({ label, value, sub, subColor, icon }) => (
       ) : null}
     </View>
     <View style={styles.iconBox}>
-      <Text style={styles.iconText}>{icon}</Text>
+      <Ionicons name={iconName} size={22} color="#5B3FD9" />
     </View>
   </View>
 );
@@ -305,13 +306,13 @@ export default function DashboardScreen({ navigation }) {
             ? `From ${manualSubscriptions.length} manual + ${bankSubscriptions.length} bank`
             : "From your added subscriptions"
         }
-        icon="💳"
+        iconName="card-outline"
       />
       <StatCard
         label="Yearly Projection"
         value={formatAmountForDashboard(yearlyProjection)}
         sub="Based on monthly totals"
-        icon="📈"
+        iconName="trending-up-outline"
       />
       <StatCard
         label="Active Subscriptions"
@@ -321,7 +322,7 @@ export default function DashboardScreen({ navigation }) {
             ? `${manualSubscriptions.length} manual + ${bankSubscriptions.length} detected`
             : "Manually added"
         }
-        icon="📅"
+        iconName="calendar-outline"
       />
       <StatCard
         label="Upcoming (7 Days)"
@@ -331,7 +332,7 @@ export default function DashboardScreen({ navigation }) {
             ? "Due in the next 7 days"
             : "No upcoming payments this week"
         }
-        icon="👛"
+        iconName="wallet-outline"
       />
     </ScrollView>
   );
@@ -423,7 +424,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  iconText: { fontSize: 20 },
   sectionHeader: { marginTop: 8, marginBottom: 12 },
   sectionTitle: { fontSize: 18, fontWeight: "700", color: "#1a1a1a" },
   sectionSub: { fontSize: 12, color: "#888" },

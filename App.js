@@ -8,6 +8,7 @@ import {
   SafeAreaProvider,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import ClearPayLogo from "./src/components/ClearPayLogo";
 
 import WelcomeScreen from "./screens/WelcomeScreen";
 import LoginScreen from "./screens/LoginScreen";
@@ -38,39 +39,30 @@ function AppHeader({ navigation, showActions = true }) {
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
-        backgroundColor: DARK,
+        backgroundColor: PURPLE,
         paddingHorizontal: 16,
         paddingVertical: 14,
         paddingTop: 50,
       }}
     >
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-        <View
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
-            backgroundColor: PURPLE,
-            justifyContent: "center",
-            alignItems: "center",
-          }}
-        >
-          <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>
-            C
-          </Text>
-        </View>
+        <ClearPayLogo size={32} radius={8} />
         <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>
           ClearPay
         </Text>
       </View>
       {showActions && (
-        <View style={{ flexDirection: "row", gap: 16 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
           <TouchableOpacity
+            style={{ justifyContent: "center", alignItems: "center" }}
             onPress={() => navigation.navigate("AddSubscription")}
           >
-            <Text style={{ color: "#fff", fontSize: 22 }}>+</Text>
+            <Ionicons name="add" size={26} color="#fff" />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate("Settings")}>
+          <TouchableOpacity
+            style={{ justifyContent: "center", alignItems: "center" }}
+            onPress={() => navigation.navigate("Settings")}
+          >
             <Ionicons name="settings-outline" size={22} color="#fff" />
           </TouchableOpacity>
         </View>
