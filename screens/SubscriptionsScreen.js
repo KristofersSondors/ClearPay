@@ -21,6 +21,10 @@ import {
 import { getSupabaseClient, hasSupabaseConfig } from "../src/lib/supabase";
 import AsyncStorage from "../src/lib/asyncStorage";
 import { mergeSubscriptions } from "../src/lib/transactionMetrics";
+import {
+  getSubscriptionLogoOverrides,
+  resolveLogoDomainForSubscription,
+} from "../src/lib/subscriptionLogoOverrides";
 
 const LOCAL_BANKING_USER_ID_KEY = "clearpay_local_banking_user_id";
 
@@ -92,6 +96,7 @@ export default function SubscriptionsScreen({ navigation }) {
   const [search, setSearch] = useState("");
   const [subscriptions, setSubscriptions] = useState([]);
   const [bankSubscriptions, setBankSubscriptions] = useState([]);
+  const [logoOverrides, setLogoOverrides] = useState({});
 
   // Sort & filter state
   const [sortKey, setSortKey] = useState("nextPayment");
@@ -122,6 +127,15 @@ export default function SubscriptionsScreen({ navigation }) {
   const loadSubscriptions = useCallback(async () => {
     const stored = await getManualSubscriptions();
     setSubscriptions(stored);
+
+    let overrides = {};
+    try {
+      overrides = await getSubscriptionLogoOverrides();
+    } catch {
+      overrides = {};
+    }
+    setLogoOverrides(overrides);
+
     try {
       const userId = await resolveUserId();
       if (userId) {
@@ -184,12 +198,13 @@ export default function SubscriptionsScreen({ navigation }) {
         color: item.source === "bank" ? "#1E40AF" : "#5B3FD9",
         nextPaymentDate,
         source: item.source,
+        logoDomain: resolveLogoDomainForSubscription(item, logoOverrides),
         monthly,
         yearly,
         createdAt: item.createdAt || "",
       };
     });
-  }, [subscriptions, bankSubscriptions]);
+  }, [subscriptions, bankSubscriptions, logoOverrides]);
 
   // Unique names for the name filter picker
   const subscriptionNames = useMemo(() => {
@@ -444,7 +459,11 @@ export default function SubscriptionsScreen({ navigation }) {
             onPress={() => navigation.navigate("SubscriptionDetail", { sub })}
           >
             <View style={{ marginRight: 12 }}>
-              <SubscriptionLogo name={sub.name} color={sub.color} />
+              <SubscriptionLogo
+                name={sub.name}
+                color={sub.color}
+                logoDomain={sub.logoDomain}
+              />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.subName}>{sub.name}</Text>

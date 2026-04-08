@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import * as WebBrowser from "expo-web-browser";
 import { getSupabaseClient, hasSupabaseConfig } from "../src/lib/supabase";
 import {
   sanitizeName,
@@ -20,6 +21,66 @@ import {
   validateSignupInputAll,
 } from "../src/utils/authSanitization";
 
+WebBrowser.maybeCompleteAuthSession();
+
+function resolveGoogleAuthRedirectUrl() {
+  const envRedirect = process.env.EXPO_PUBLIC_AUTH_REDIRECT_URL?.trim();
+
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    if (envRedirect) {
+      return envRedirect;
+    }
+
+    return `${window.location.origin}/auth/callback`;
+  }
+
+  if (envRedirect && envRedirect.startsWith("clearpay://")) {
+    return envRedirect;
+  }
+
+  return "clearpay://auth/callback";
+}
+
+function parseCallbackParams(callbackUrl = "") {
+  const params = new URLSearchParams();
+
+  if (!callbackUrl) {
+    return params;
+  }
+
+  try {
+    const parsedUrl = new URL(callbackUrl);
+
+    parsedUrl.searchParams.forEach((value, key) => {
+      params.set(key, value);
+    });
+
+    if (parsedUrl.hash?.startsWith("#")) {
+      const hashParams = new URLSearchParams(parsedUrl.hash.slice(1));
+      hashParams.forEach((value, key) => {
+        params.set(key, value);
+      });
+    }
+
+    return params;
+  } catch {
+    const [withoutHash, hashPart = ""] = callbackUrl.split("#");
+    const queryPart = withoutHash.split("?")[1] || "";
+
+    const queryParams = new URLSearchParams(queryPart);
+    queryParams.forEach((value, key) => {
+      params.set(key, value);
+    });
+
+    const hashParams = new URLSearchParams(hashPart);
+    hashParams.forEach((value, key) => {
+      params.set(key, value);
+    });
+
+    return params;
+  }
+}
+
 export default function RegisterScreen({ navigation }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -27,6 +88,9 @@ export default function RegisterScreen({ navigation }) {
   const [confirm, setConfirm] = useState("");
   const [errors, setErrors] = useState([]);
   const [loading, setLoading] = useState(false);
+  const googleAuthInProgressRef = useRef(false);
+
+  const redirectTo = resolveGoogleAuthRedirectUrl();
 
   const isEmailAlreadyInUse = (authError) => {
     const code = authError?.code?.toLowerCase?.() || "";
@@ -115,6 +179,110 @@ export default function RegisterScreen({ navigation }) {
         "Something went wrong while creating your account. Please try again.",
       ]);
     } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    if (googleAuthInProgressRef.current) {
+      return;
+    }
+
+    if (!hasSupabaseConfig) {
+      setErrors([
+        "Supabase is not configured. Add EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY.",
+      ]);
+      return;
+    }
+
+    try {
+      googleAuthInProgressRef.current = true;
+      setErrors([]);
+      setLoading(true);
+
+      const supabase = getSupabaseClient();
+      const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo,
+          skipBrowserRedirect: true,
+          queryParams: {
+            prompt: "select_account",
+          },
+        },
+      });
+
+      if (oauthError || !data?.url) {
+        setErrors([oauthError?.message || "Unable to start Google sign-in."]);
+        return;
+      }
+
+      const authResult = await WebBrowser.openAuthSessionAsync(
+        data.url,
+        redirectTo,
+      );
+
+      if (authResult.type !== "success" || !authResult.url) {
+        if (authResult.type !== "cancel" && authResult.type !== "dismiss") {
+          setErrors(["Google sign-in was not completed."]);
+        }
+        return;
+      }
+
+      const callbackParams = parseCallbackParams(authResult.url);
+      const callbackError =
+        callbackParams.get("error_description") || callbackParams.get("error");
+
+      if (callbackError) {
+        setErrors([callbackError]);
+        return;
+      }
+
+      const authCode = callbackParams.get("code");
+
+      if (authCode && typeof authCode === "string") {
+        const { error: exchangeError } =
+          await supabase.auth.exchangeCodeForSession(authCode);
+
+        if (exchangeError) {
+          setErrors([
+            exchangeError.message || "Unable to finish Google sign-in.",
+          ]);
+          return;
+        }
+      } else {
+        const accessToken = callbackParams.get("access_token");
+        const refreshToken = callbackParams.get("refresh_token");
+
+        if (!accessToken || !refreshToken) {
+          setErrors([
+            "Google sign-in callback did not include a valid session. Please try again.",
+          ]);
+          return;
+        }
+
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+
+        if (sessionError) {
+          setErrors([
+            sessionError.message || "Unable to finish Google sign-in.",
+          ]);
+          return;
+        }
+      }
+
+      setTimeout(() => {
+        navigation.replace("BankLinking", {
+          signupSuccess: true,
+        });
+      }, 150);
+    } catch {
+      setErrors(["Something went wrong during Google sign-in. Please try again."]);
+    } finally {
+      googleAuthInProgressRef.current = false;
       setLoading(false);
     }
   };
@@ -227,6 +395,21 @@ export default function RegisterScreen({ navigation }) {
                   : "Next: Link Your Bank Accounts"}
               </Text>
             </TouchableOpacity>
+
+            <View style={styles.dividerRow}>
+              <View style={styles.divider} />
+              <Text style={styles.dividerText}>Or continue with</Text>
+              <View style={styles.divider} />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.googleBtn, loading && styles.btnDisabled]}
+              onPress={handleGoogleSignIn}
+              disabled={loading}
+            >
+              <Text style={styles.googleG}>G </Text>
+              <Text style={styles.googleText}>Sign in with Google</Text>
+            </TouchableOpacity>
           </View>
 
           <TouchableOpacity onPress={() => navigation.navigate("Login")}>
@@ -307,6 +490,24 @@ const styles = StyleSheet.create({
   },
   btnDisabled: { opacity: 0.6 },
   btnText: { color: "#fff", fontSize: 15, fontWeight: "600" },
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 16,
+  },
+  divider: { flex: 1, height: 1, backgroundColor: "#E5E5E5" },
+  dividerText: { marginHorizontal: 10, color: "#999", fontSize: 13 },
+  googleBtn: {
+    flexDirection: "row",
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+    borderRadius: 8,
+    padding: 13,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  googleG: { fontSize: 16, fontWeight: "700", color: "#4285F4" },
+  googleText: { fontSize: 14, color: "#333", fontWeight: "500" },
   loginLink: { fontSize: 14, color: "#666" },
   loginBold: { color: "#5B3FD9", fontWeight: "700" },
 });

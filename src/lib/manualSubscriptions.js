@@ -1,6 +1,10 @@
 import AsyncStorage from "./asyncStorage";
 import { getSupabaseClient, hasSupabaseConfig } from "./supabase";
 import {
+  inferSubscriptionLogoDomain,
+  normalizeLogoDomain,
+} from "./subscriptionLogos";
+import {
   parseNextPaymentDateInputToIso,
   sanitizeAmountInput,
   sanitizeFrequencyInput,
@@ -57,6 +61,31 @@ function toNumber(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function resolveLogoDomain(logoDomain, name) {
+  const normalized = normalizeLogoDomain(logoDomain);
+  if (normalized) {
+    return normalized;
+  }
+
+  return inferSubscriptionLogoDomain(name);
+}
+
+function withResolvedLogoDomain(subscription = {}) {
+  const name = String(subscription.name || "");
+  return {
+    ...subscription,
+    logoDomain: resolveLogoDomain(
+      subscription.logoDomain || subscription.logo_domain,
+      name,
+    ),
+  };
+}
+
+function isMissingLogoDomainColumnError(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return message.includes("logo_domain") && message.includes("column");
+}
+
 export function computeMonthlyAmount(amount, frequency) {
   const safeAmount = toNumber(amount);
 
@@ -93,34 +122,35 @@ export async function getManualSubscriptions() {
       const supabase = getSupabaseClient();
       const { data, error } = await supabase
         .from("manual_subscriptions")
-        .select(
-          "id, name, frequency, amount, currency, monthly_amount, next_payment_iso, created_at, updated_at",
-        )
+        .select("*")
         .eq("user_id", userId)
         .order("created_at", { ascending: false });
       if (error) {
         throw error;
       }
       // Normalize to match local shape
-      return (data || []).map((item) => ({
-        id: item.id,
-        name: item.name,
-        frequency: item.frequency,
-        amountValue: item.amount,
-        currency: item.currency,
-        monthlyAmount: item.monthly_amount,
-        nextPaymentIso: item.next_payment_iso,
-        createdAt: item.created_at,
-        updatedAt: item.updated_at,
-        source: "manual",
-      }));
+      return (data || []).map((item) =>
+        withResolvedLogoDomain({
+          id: item.id,
+          name: item.name,
+          frequency: item.frequency,
+          amountValue: item.amount,
+          currency: item.currency,
+          monthlyAmount: item.monthly_amount,
+          nextPaymentIso: item.next_payment_iso,
+          createdAt: item.created_at,
+          updatedAt: item.updated_at,
+          logoDomain: item.logo_domain || "",
+          source: "manual",
+        }),
+      );
     }
     // Anonymous: fallback to AsyncStorage
     const storageKey = await getResolvedSubscriptionsStorageKey();
     const scopedRaw = await AsyncStorage.getItem(storageKey);
     const scopedSubscriptions = parseStoredSubscriptions(scopedRaw);
     if (scopedSubscriptions.length > 0) {
-      return scopedSubscriptions;
+      return scopedSubscriptions.map((item) => withResolvedLogoDomain(item));
     }
     const legacyRaw = await AsyncStorage.getItem(
       LEGACY_MANUAL_SUBSCRIPTIONS_KEY,
@@ -131,15 +161,18 @@ export async function getManualSubscriptions() {
       legacySubscriptions.length > 0 &&
       storageKey !== getSubscriptionsStorageKey("")
     ) {
+      const normalizedLegacy = legacySubscriptions.map((item) =>
+        withResolvedLogoDomain(item),
+      );
       await AsyncStorage.setItem(
         storageKey,
-        JSON.stringify(legacySubscriptions),
+        JSON.stringify(normalizedLegacy),
       );
       await AsyncStorage.removeItem(LEGACY_MANUAL_SUBSCRIPTIONS_KEY);
-      return legacySubscriptions;
+      return normalizedLegacy;
     }
     if (storageKey === getSubscriptionsStorageKey("")) {
-      return legacySubscriptions;
+      return legacySubscriptions.map((item) => withResolvedLogoDomain(item));
     }
     return [];
   } catch {
@@ -153,6 +186,7 @@ export async function addManualSubscription({
   amount,
   currency,
   nextPaymentIso,
+  logoDomain,
 }) {
   const cleanProvider = sanitizeSubscriptionNameInput(String(provider || ""));
   const amountValue = toNumber(sanitizeAmountInput(amount));
@@ -160,6 +194,7 @@ export async function addManualSubscription({
   const cleanCurrency = String(currency || "USD");
   const parsedNextPaymentIso =
     nextPaymentIso || getNextPaymentDate(cleanFrequency);
+  const resolvedLogoDomain = resolveLogoDomain(logoDomain, cleanProvider);
 
   const next = {
     id: `manual-${Date.now()}`,
@@ -169,6 +204,7 @@ export async function addManualSubscription({
     currency: cleanCurrency,
     monthlyAmount: computeMonthlyAmount(amountValue, cleanFrequency),
     nextPaymentIso: parsedNextPaymentIso,
+    logoDomain: resolvedLogoDomain,
     createdAt: new Date().toISOString(),
     source: "manual",
   };
@@ -177,20 +213,32 @@ export async function addManualSubscription({
   if (userId) {
     // Authenticated: insert into Supabase
     const supabase = getSupabaseClient();
-    const { error } = await supabase.from("manual_subscriptions").insert([
-      {
-        id: next.id,
-        user_id: userId,
-        name: next.name,
-        frequency: next.frequency,
-        amount: next.amountValue,
-        currency: next.currency,
-        monthly_amount: next.monthlyAmount,
-        next_payment_iso: next.nextPaymentIso,
-        created_at: next.createdAt,
-        updated_at: next.createdAt,
-      },
-    ]);
+    const insertPayload = {
+      id: next.id,
+      user_id: userId,
+      name: next.name,
+      frequency: next.frequency,
+      amount: next.amountValue,
+      currency: next.currency,
+      monthly_amount: next.monthlyAmount,
+      next_payment_iso: next.nextPaymentIso,
+      logo_domain: next.logoDomain || null,
+      created_at: next.createdAt,
+      updated_at: next.createdAt,
+    };
+
+    let { error } = await supabase
+      .from("manual_subscriptions")
+      .insert([insertPayload]);
+
+    if (error && isMissingLogoDomainColumnError(error)) {
+      const { logo_domain, ...fallbackPayload } = insertPayload;
+      const retry = await supabase
+        .from("manual_subscriptions")
+        .insert([fallbackPayload]);
+      error = retry.error;
+    }
+
     if (error) throw error;
     return next;
   }
@@ -226,6 +274,10 @@ export async function updateManualSubscription(id, updates = {}) {
       updates.amount !== undefined
         ? toNumber(sanitizeAmountInput(updates.amount))
         : toNumber(data.amount);
+    const resolvedLogoDomain = resolveLogoDomain(
+      updates.logoDomain !== undefined ? updates.logoDomain : data.logo_domain,
+      cleanName,
+    );
     let nextPaymentIso = data.next_payment_iso;
     if (updates.nextPaymentDate !== undefined) {
       nextPaymentIso =
@@ -239,15 +291,28 @@ export async function updateManualSubscription(id, updates = {}) {
       amount: cleanAmountValue,
       monthly_amount: computeMonthlyAmount(cleanAmountValue, cleanFrequency),
       next_payment_iso: nextPaymentIso,
+      logo_domain: resolvedLogoDomain || null,
       updated_at: new Date().toISOString(),
     };
-    const { error } = await supabase
+
+    let { error } = await supabase
       .from("manual_subscriptions")
       .update(updatedItem)
       .eq("user_id", userId)
       .eq("id", id);
+
+    if (error && isMissingLogoDomainColumnError(error)) {
+      const { logo_domain, ...fallbackUpdate } = updatedItem;
+      const retry = await supabase
+        .from("manual_subscriptions")
+        .update(fallbackUpdate)
+        .eq("user_id", userId)
+        .eq("id", id);
+      error = retry.error;
+    }
+
     if (error) throw error;
-    return {
+    return withResolvedLogoDomain({
       id: updatedItem.id,
       name: updatedItem.name,
       frequency: updatedItem.frequency,
@@ -257,8 +322,9 @@ export async function updateManualSubscription(id, updates = {}) {
       nextPaymentIso: updatedItem.next_payment_iso,
       createdAt: updatedItem.created_at,
       updatedAt: updatedItem.updated_at,
+      logoDomain: updatedItem.logo_domain || "",
       source: "manual",
-    };
+    });
   }
   // Anonymous: fallback to AsyncStorage
   const existing = await getManualSubscriptions();
@@ -277,6 +343,10 @@ export async function updateManualSubscription(id, updates = {}) {
     updates.amount !== undefined
       ? toNumber(sanitizeAmountInput(updates.amount))
       : toNumber(target.amountValue);
+  const resolvedLogoDomain = resolveLogoDomain(
+    updates.logoDomain !== undefined ? updates.logoDomain : target.logoDomain,
+    cleanName,
+  );
   let nextPaymentIso = target.nextPaymentIso;
   if (updates.nextPaymentDate !== undefined) {
     nextPaymentIso =
@@ -289,13 +359,14 @@ export async function updateManualSubscription(id, updates = {}) {
     amountValue: cleanAmountValue,
     monthlyAmount: computeMonthlyAmount(cleanAmountValue, cleanFrequency),
     nextPaymentIso,
+    logoDomain: resolvedLogoDomain,
   };
   const updatedList = existing.map((item) =>
     item.id === id ? updatedItem : item,
   );
   const storageKey = await getResolvedSubscriptionsStorageKey();
   await AsyncStorage.setItem(storageKey, JSON.stringify(updatedList));
-  return updatedItem;
+  return withResolvedLogoDomain(updatedItem);
 }
 
 export async function removeManualSubscription(id) {

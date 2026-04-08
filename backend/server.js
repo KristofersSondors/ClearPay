@@ -437,6 +437,59 @@ function getMonthlyMultiplierForFrequency(frequency) {
   return 1;
 }
 
+function normalizeLogoDomain(value = "") {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return "";
+
+  const withoutProtocol = raw.replace(/^https?:\/\//, "");
+  const withoutPath = withoutProtocol.split("/")[0].split("?")[0].split("#")[0];
+  const withoutPort = withoutPath.split(":")[0];
+  const normalized = withoutPort.replace(/^www\./, "").trim();
+
+  if (!normalized.includes(".")) {
+    return "";
+  }
+
+  if (!/^[a-z0-9.-]+$/.test(normalized)) {
+    return "";
+  }
+
+  if (normalized.startsWith(".") || normalized.endsWith(".")) {
+    return "";
+  }
+
+  return normalized;
+}
+
+function isMissingLogoDomainColumnError(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return message.includes("logo_domain") && message.includes("column");
+}
+
+async function upsertDetectedSubscriptionsRows(rows) {
+  if (!supabase || !Array.isArray(rows) || rows.length === 0) {
+    return { error: null };
+  }
+
+  let { error } = await supabase
+    .from("detected_subscriptions")
+    .upsert(rows, { onConflict: ["user_id", "subscription_id"] });
+
+  if (error && isMissingLogoDomainColumnError(error)) {
+    const fallbackRows = rows.map((row) => {
+      const { logo_domain, ...rest } = row;
+      return rest;
+    });
+
+    const retry = await supabase
+      .from("detected_subscriptions")
+      .upsert(fallbackRows, { onConflict: ["user_id", "subscription_id"] });
+    error = retry.error;
+  }
+
+  return { error };
+}
+
 function detectSubscriptionsFromTransactions(transactions, bankId, sessionId) {
   const debits = transactions.filter((transaction) => {
     const indicator = String(
@@ -1014,13 +1067,13 @@ app.get("/api/banking/link/callback", async (req, res) => {
         frequency: item.frequency,
         next_payment: item.nextPaymentIso,
         bank_id: item.bankId,
+        logo_domain: normalizeLogoDomain(item.logoDomain || "") || null,
         imported_at: item.importedAt,
         updated_at: new Date().toISOString(),
       }));
       try {
-        const { error: detectedError } = await supabase
-          .from("detected_subscriptions")
-          .upsert(upsertRows, { onConflict: ["user_id", "subscription_id"] });
+        const { error: detectedError } =
+          await upsertDetectedSubscriptionsRows(upsertRows);
         if (detectedError) {
           console.error(
             "[SUPABASE UPSERT DETECTED SUBSCRIPTIONS ERROR]",
@@ -1082,9 +1135,7 @@ app.get("/api/banking/subscriptions-detected", async (req, res) => {
   // Get all detected subscriptions for the user from Supabase
   const { data, error } = await supabase
     .from("detected_subscriptions")
-    .select(
-      "subscription_id, name, amount, currency, frequency, next_payment, bank_id, imported_at, updated_at",
-    )
+    .select("*")
     .eq("user_id", userId);
   if (error) {
     return res.status(500).json({ error: error.message });
@@ -1102,6 +1153,7 @@ app.get("/api/banking/subscriptions-detected", async (req, res) => {
       frequency: row.frequency,
       nextPaymentIso: row.next_payment,
       bankId: row.bank_id,
+      logoDomain: normalizeLogoDomain(row.logo_domain || ""),
       importedAt: row.imported_at,
       updatedAt: row.updated_at,
       monthlyAmount: Number((amountValue * monthlyMultiplier).toFixed(2)),
@@ -1126,23 +1178,23 @@ app.put("/api/banking/subscriptions-detected/:id", async (req, res) => {
       .json({ error: "userId and subscription id are required." });
   }
   const { name, amount, currency, frequency, nextPaymentIso } = req.body || {};
+  const logoDomain = normalizeLogoDomain(req.body?.logoDomain || "");
 
   // Upsert into Supabase
-  const { error } = await supabase.from("detected_subscriptions").upsert(
-    [
-      {
-        user_id: userId,
-        subscription_id: subscriptionId,
-        name,
-        amount,
-        currency,
-        frequency,
-        next_payment: nextPaymentIso,
-        updated_at: new Date().toISOString(),
-      },
-    ],
-    { onConflict: ["user_id", "subscription_id"] },
-  );
+  const upsertRows = [
+    {
+      user_id: userId,
+      subscription_id: subscriptionId,
+      name,
+      amount,
+      currency,
+      frequency,
+      next_payment: nextPaymentIso,
+      logo_domain: logoDomain || null,
+      updated_at: new Date().toISOString(),
+    },
+  ];
+  const { error } = await upsertDetectedSubscriptionsRows(upsertRows);
   if (error) {
     // Log error for debugging
     console.error("Failed to update detected subscription:", error);

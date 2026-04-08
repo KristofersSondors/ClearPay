@@ -30,6 +30,10 @@ import {
   calculateUpcomingPayments,
   calculateUpcomingAmount,
 } from "../src/lib/transactionMetrics";
+import {
+  getSubscriptionLogoOverrides,
+  resolveLogoDomainForSubscription,
+} from "../src/lib/subscriptionLogoOverrides";
 
 const LOCAL_BANKING_USER_ID_KEY = "clearpay_local_banking_user_id";
 
@@ -58,6 +62,7 @@ export default function DashboardScreen({ navigation }) {
   const [hideAmountsOnDashboard, setHideAmountsOnDashboard] = useState(false);
   const [amountsRevealed, setAmountsRevealed] = useState(false);
   const [showBankPrompt, setShowBankPrompt] = useState(false);
+  const [logoOverrides, setLogoOverrides] = useState({});
 
   const resolveAuthContext = async () => {
     if (hasSupabaseConfig) {
@@ -98,6 +103,13 @@ export default function DashboardScreen({ navigation }) {
       const shouldHide = Boolean(privacy?.hideAmountsOnDashboard);
       setHideAmountsOnDashboard(shouldHide);
       setAmountsRevealed(!shouldHide);
+      let overrides = {};
+      try {
+        overrides = await getSubscriptionLogoOverrides();
+      } catch {
+        overrides = {};
+      }
+      setLogoOverrides(overrides);
 
       try {
         const { userId, provider } = await resolveAuthContext();
@@ -202,7 +214,9 @@ export default function DashboardScreen({ navigation }) {
       );
 
       return {
+        id: item.id,
         name: item.name,
+        logoDomain: resolveLogoDomainForSubscription(item, logoOverrides),
         amount: `${preferredCurrencyMeta.code} ${convertedAmount.toFixed(2)}`,
         originalCurrency: item.currency,
         originalAmount: `${item.currency} ${item.amount.toFixed(2)}`,
@@ -214,6 +228,7 @@ export default function DashboardScreen({ navigation }) {
     allSubscriptions,
     preferredCurrency,
     preferredCurrencyMeta.code,
+    logoOverrides,
     usdRates,
   ]);
 
@@ -268,7 +283,12 @@ export default function DashboardScreen({ navigation }) {
         upcomingPayments.map((item, index) => (
           <View key={`${item.name}-${index}`} style={styles.paymentRow}>
             <View style={{ marginRight: 12 }}>
-              <SubscriptionLogo name={item.name} size={40} radius={10} />
+              <SubscriptionLogo
+                name={item.name}
+                logoDomain={item.logoDomain}
+                size={40}
+                radius={10}
+              />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.paymentName}>{item.name}</Text>

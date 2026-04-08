@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
   View,
@@ -29,6 +29,15 @@ import {
   TOGGLE_TRACK_COLOR,
   getToggleThumbColor,
 } from "../src/lib/toggleBehavior";
+import {
+  clearSubscriptionLogoOverride,
+  getSubscriptionLogoOverrides,
+  setSubscriptionLogoOverride,
+} from "../src/lib/subscriptionLogoOverrides";
+import {
+  inferSubscriptionLogoDomain,
+  normalizeLogoDomain,
+} from "../src/lib/subscriptionLogos";
 
 const FREQUENCIES = ["Weekly", "Monthly", "Yearly"];
 const WEEK_DAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
@@ -92,6 +101,14 @@ function getSuggestedNextPaymentDateInput(frequency) {
   }
 
   return formatDateToInput(nextDate);
+}
+
+function getBackendBaseUrl() {
+  return (
+    process.env.EXPO_PUBLIC_BACKEND_URL ||
+    process.env.EXPO_PUBLIC_API_BASE_URL ||
+    "http://localhost:4000"
+  ).replace(/\/$/, "");
 }
 
 function shiftMonth(date, amount) {
@@ -158,6 +175,41 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
   );
   const [freqOpen, setFreqOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const inferredLogoDomain = inferSubscriptionLogoDomain(sub.name || "");
+  const [logoDomainInput, setLogoDomainInput] = useState("");
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadLogoOverride = async () => {
+      let overrides = {};
+      try {
+        overrides = await getSubscriptionLogoOverrides();
+      } catch {
+        overrides = {};
+      }
+      if (!isMounted) {
+        return;
+      }
+
+      const existingOverride = normalizeLogoDomain(overrides?.[sub.id] || "");
+      const existingFromSubscription = normalizeLogoDomain(sub.logoDomain || "");
+      const initialInput =
+        existingOverride ||
+        (existingFromSubscription &&
+        existingFromSubscription !== inferredLogoDomain
+          ? existingFromSubscription
+          : "");
+
+      setLogoDomainInput(initialInput);
+    };
+
+    loadLogoOverride();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [inferredLogoDomain, sub.id, sub.logoDomain]);
 
   // Compute the normalized monthly projection for display
   function computeMonthlyAmount(amount, frequency) {
@@ -171,8 +223,8 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
     return safeAmount;
   }
   const monthlyProjection = computeMonthlyAmount(amount, frequency);
-
-  const amountLabel = `${sub.currency || "USD"} ${amount || "0.00"}`;
+  const normalizedLogoDomainInput = normalizeLogoDomain(logoDomainInput);
+  const effectiveLogoDomain = normalizedLogoDomainInput || inferredLogoDomain;
 
   const days = ["1 day", "3 days", "7 days", "14 days"];
 
@@ -180,6 +232,12 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
     const cleanAmount = sanitizeAmountInput(amount);
     const cleanFrequency = sanitizeFrequencyInput(frequency);
     const cleanDateInput = sanitizeNextPaymentDateInput(nextPaymentDate);
+    const hasLogoInput = Boolean(String(logoDomainInput || "").trim());
+    const normalizedLogoDomain = normalizeLogoDomain(logoDomainInput);
+    const cleanLogoDomain =
+      normalizedLogoDomain && normalizedLogoDomain !== inferredLogoDomain
+        ? normalizedLogoDomain
+        : "";
     const frequencyChanged = cleanFrequency !== initialFrequency;
     const dateWasUnchanged = cleanDateInput === initialNextPaymentDate;
     const cleanDate =
@@ -190,6 +248,14 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
     setAmount(cleanAmount);
     setFrequency(cleanFrequency);
     setNextPaymentDate(cleanDate);
+
+    if (hasLogoInput && !normalizedLogoDomain) {
+      Alert.alert(
+        "Invalid logo domain",
+        "Please enter a valid domain like netflix.com.",
+      );
+      return;
+    }
 
     const errors = validateSubscriptionInput({
       provider: sub.name,
@@ -210,6 +276,7 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
           amount: cleanAmount,
           frequency: cleanFrequency,
           nextPaymentDate: cleanDate,
+          logoDomain: cleanLogoDomain,
         });
       } else {
         // Detected subscription: persist edit via backend
@@ -220,8 +287,9 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
           throw new Error("Not authenticated");
         }
         const userId = userData.user.id;
+        const backendBaseUrl = getBackendBaseUrl();
         const response = await fetch(
-          `${process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:4000"}/api/banking/subscriptions-detected/${encodeURIComponent(sub.id)}`,
+          `${backendBaseUrl}/api/banking/subscriptions-detected/${encodeURIComponent(sub.id)}`,
           {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
@@ -232,6 +300,7 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
               currency: sub.currency,
               frequency: cleanFrequency,
               nextPaymentIso: cleanDate,
+              logoDomain: cleanLogoDomain,
             }),
           },
         );
@@ -239,6 +308,13 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
           throw new Error("Failed to update subscription");
         }
       }
+
+      if (cleanLogoDomain) {
+        await setSubscriptionLogoOverride(sub.id, cleanLogoDomain);
+      } else {
+        await clearSubscriptionLogoOverride(sub.id);
+      }
+
       Alert.alert("Saved", "Subscription updated successfully.");
       navigation.goBack();
     } catch {
@@ -309,6 +385,7 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
           <SubscriptionLogo
             name={sub.name}
             color={sub.color}
+            logoDomain={effectiveLogoDomain}
             size={88}
             radius={22}
           />
@@ -392,6 +469,28 @@ export default function SubscriptionDetailScreen({ route, navigation }) {
                 </View>
               )}
             </View>
+          </View>
+
+          <View style={styles.divider} />
+
+          <View style={styles.logoSection}>
+            <Text style={styles.infoLabel}>Logo domain (optional):</Text>
+            <TextInput
+              style={styles.logoDomainInput}
+              value={logoDomainInput}
+              onChangeText={setLogoDomainInput}
+              placeholder={
+                inferredLogoDomain
+                  ? `Auto: ${inferredLogoDomain}`
+                  : "e.g. netflix.com"
+              }
+              placeholderTextColor="#999"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <Text style={styles.logoHint}>
+              Leave blank to use automatic logo matching by subscription name.
+            </Text>
           </View>
         </View>
 
@@ -699,6 +798,24 @@ const styles = StyleSheet.create({
   dropText: { fontSize: 13, color: "#444" },
   dropTextActive: { color: "#5B3FD9", fontWeight: "600" },
   divider: { height: 1, backgroundColor: "#F0F0F0" },
+  logoSection: {
+    paddingTop: 12,
+    gap: 8,
+  },
+  logoDomainInput: {
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    fontSize: 13,
+    color: "#1a1a1a",
+  },
+  logoHint: {
+    fontSize: 12,
+    color: "#777",
+    lineHeight: 16,
+  },
   saveBtn: {
     backgroundColor: "#5B3FD9",
     borderRadius: 10,

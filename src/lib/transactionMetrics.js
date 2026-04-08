@@ -56,6 +56,7 @@ export function calculateUpcomingPayments(subscriptions, days = 30) {
       currency: sub.currency || "USD",
       frequency: sub.frequency || "Monthly",
       nextPaymentIso: sub.nextPaymentIso,
+      logoDomain: sub.logoDomain || sub.logo_domain || "",
       source: sub.source || "manual", // "manual" or "bank"
       date: new Date(sub.nextPaymentIso).toLocaleDateString("en-US", {
         month: "short",

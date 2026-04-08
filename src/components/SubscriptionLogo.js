@@ -1,18 +1,24 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, Image } from "react-native";
-import { getSubscriptionBrand } from "../lib/subscriptionLogos";
+import { getSubscriptionBrand, normalizeLogoDomain } from "../lib/subscriptionLogos";
 
-export default function SubscriptionLogo({ name, color, size = 44, radius = 12 }) {
+export default function SubscriptionLogo({ name, color, logoDomain, size = 44, radius = 12 }) {
   const brand = getSubscriptionBrand(name);
   const [iconHorseFailed, setIconHorseFailed] = useState(false);
   const [googleFailed, setGoogleFailed] = useState(false);
+  const resolvedLogoDomain = normalizeLogoDomain(logoDomain) || normalizeLogoDomain(brand?.domain || "");
 
   const bgColor = brand?.color || color || "#9B8EC4";
   const initial = (name || "?").charAt(0).toUpperCase();
   const imgSize = Math.round(size * 0.72);
   const fontSize = Math.round(size * 0.38);
 
-  if (brand) {
+  useEffect(() => {
+    setIconHorseFailed(false);
+    setGoogleFailed(false);
+  }, [resolvedLogoDomain]);
+
+  if (resolvedLogoDomain) {
     if (!iconHorseFailed) {
       return (
         <View style={{
@@ -21,7 +27,7 @@ export default function SubscriptionLogo({ name, color, size = 44, radius = 12 }
           justifyContent: "center", alignItems: "center", overflow: "hidden",
         }}>
           <Image
-            source={{ uri: `https://icon.horse/icon/${brand.domain}` }}
+            source={{ uri: `https://icon.horse/icon/${resolvedLogoDomain}` }}
             style={{ width: imgSize, height: imgSize }}
             resizeMode="contain"
             onError={() => setIconHorseFailed(true)}
@@ -38,7 +44,7 @@ export default function SubscriptionLogo({ name, color, size = 44, radius = 12 }
           justifyContent: "center", alignItems: "center", overflow: "hidden",
         }}>
           <Image
-            source={{ uri: `https://www.google.com/s2/favicons?domain=${brand.domain}&sz=128` }}
+            source={{ uri: `https://www.google.com/s2/favicons?domain=${resolvedLogoDomain}&sz=128` }}
             style={{ width: imgSize, height: imgSize }}
             resizeMode="contain"
             onError={() => setGoogleFailed(true)}

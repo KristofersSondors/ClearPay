@@ -294,6 +294,44 @@ export function getSubscriptionBrand(name) {
   return null;
 }
 
+export function normalizeLogoDomain(value = "") {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return "";
+
+  const withoutProtocol = raw.replace(/^https?:\/\//, "");
+  const withoutPath = withoutProtocol.split("/")[0].split("?")[0].split("#")[0];
+  const withoutPort = withoutPath.split(":")[0];
+  const normalized = withoutPort.replace(/^www\./, "").trim();
+
+  if (!normalized.includes(".")) {
+    return "";
+  }
+
+  if (!/^[a-z0-9.-]+$/.test(normalized)) {
+    return "";
+  }
+
+  if (normalized.startsWith(".") || normalized.endsWith(".")) {
+    return "";
+  }
+
+  return normalized;
+}
+
+export function inferSubscriptionLogoDomain(name = "") {
+  const brand = getSubscriptionBrand(name);
+  return normalizeLogoDomain(brand?.domain || "");
+}
+
+export function resolveSubscriptionLogoDomain({ name = "", logoDomain = "" } = {}) {
+  const explicit = normalizeLogoDomain(logoDomain);
+  if (explicit) {
+    return explicit;
+  }
+
+  return inferSubscriptionLogoDomain(name);
+}
+
 export function getLogoUrl(domain) {
   return `https://logo.clearbit.com/${domain}`;
 }
